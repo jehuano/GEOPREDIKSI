@@ -1,0 +1,2362 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geoprediksi Nusantara - System EWS & Seismik Realtime</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Chart.js for Disaster Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'ping-slow': 'ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite',
+                        'marquee': 'marquee 25s linear infinite',
+                        'pop-in': 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        'fade-in': 'fadeIn 0.25s ease-out forwards',
+                    },
+                    keyframes: {
+                        marquee: {
+                            '0%': { transform: 'translateX(100%)' },
+                            '100%': { transform: 'translateX(-100%)' }
+                        },
+                        popIn: {
+                            '0%': { opacity: '0', transform: 'scale(0.85) translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #090d16; color: #f8fafc; overflow-x: hidden; }
+        .glass-panel { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(14px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass-card { background: rgba(30, 41, 59, 0.75); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        
+        /* Custom Leaflet Map Styling */
+        .leaflet-popup-content-wrapper { background: #0f172a; color: #f8fafc; border: 1px solid #334155; border-radius: 12px; }
+        .leaflet-popup-tip { background: #0f172a; }
+
+        /* Interactivity Micro-animations */
+        button, .interactive-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        button:active, .interactive-card:active {
+            transform: scale(0.94);
+        }
+
+        /* Click Flash / Pulse Animation */
+        .btn-clicked {
+            animation: clickFlash 0.35s ease-out forwards;
+        }
+
+        @keyframes clickFlash {
+            0% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+            50% { transform: scale(1.03); box-shadow: 0 0 15px 4px rgba(56, 189, 248, 0.5); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+        }
+
+        /* Click Ripple Effect Style */
+        .btn-ripple {
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-ripple::after {
+            content: "";
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            background-image: radial-gradient(circle, #fff 10%, transparent 10.01%);
+            background-repeat: no-repeat;
+            background-position: 50%;
+            transform: scale(10, 10);
+            opacity: 0;
+            transition: transform .5s, opacity 1s;
+        }
+        .btn-ripple:active::after {
+            transform: scale(0, 0);
+            opacity: .3;
+            transition: 0s;
+        }
+
+        /* User Location Pulse Marker */
+        .user-location-marker {
+            position: relative;
+        }
+        .user-location-marker::before {
+            content: '';
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            top: -6px;
+            left: -6px;
+            background-color: rgba(14, 165, 233, 0.4);
+            border-radius: 50%;
+            animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- NAVIGATION HEADER -->
+    <header class="h-20 bg-slate-900/95 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-50 flex items-center justify-between px-4 lg:px-8">
+        <!-- Logo & Title -->
+        <div class="flex items-center gap-3">
+            <div class="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 p-0.5 shadow-lg shadow-cyan-500/20">
+                <div class="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center relative overflow-hidden">
+                    <!-- LOGO BUMI PERBAIKAN -->
+                    <img src="pngtree-globe-logo-design-icon-vector-png-image_1296060.jpg" alt="Logo Bumi" class="w-full h-full object-cover rounded-[14px]">
+                    <div class="absolute inset-0 bg-cyan-500/10 animate-ping-slow rounded-full"></div>
+                </div>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-lg lg:text-xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
+                        GEOPREDIKSI NUSANTARA
+                    </h1>
+                    <span class="px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-cyan-300 bg-cyan-950/90 border border-cyan-500/30 rounded-full uppercase">EWS v6.5</span>
+                </div>
+                <p class="text-xs text-slate-400 hidden sm:block">Pusat Monitor Seismik, Tsunami & Mitigasi Indonesia</p>
+            </div>
+        </div>
+
+        <!-- Main Navigation Tabs -->
+        <nav class="hidden xl:flex items-center gap-1 bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800/80">
+            <button onclick="switchTab('map-tab'); playBtnClickSound();" id="nav-map-tab" class="nav-btn btn-ripple active flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all bg-cyan-600 text-white shadow-lg shadow-cyan-600/30">
+                <i class="fa-solid fa-earth-asia"></i> Peta Radar & Seismik
+            </button>
+            <button onclick="switchTab('history-tab'); playBtnClickSound();" id="nav-history-tab" class="nav-btn btn-ripple flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+                <i class="fa-solid fa-clock-rotate-left"></i> Histori & Tracking Tsunami
+            </button>
+            <button onclick="switchTab('ai-tab'); playBtnClickSound();" id="nav-ai-tab" class="nav-btn btn-ripple flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+                <i class="fa-solid fa-brain"></i> Kalkulator AI Risk
+            </button>
+            <button onclick="switchTab('ews-tab'); playBtnClickSound();" id="nav-ews-tab" class="nav-btn btn-ripple flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+                <i class="fa-solid fa-shield-halved"></i> Pusat EWS & Mitigasi
+            </button>
+        </nav>
+
+        <!-- Right Action Buttons -->
+        <div class="flex items-center gap-2">
+            <!-- Audio Toggle Button -->
+            <button id="toggle-audio-btn" onclick="toggleAudioEngine(); playBtnClickSound();" class="btn-ripple flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition-all">
+                <i id="audio-icon" class="fa-solid fa-volume-xmark text-slate-400"></i>
+                <span id="audio-status-text" class="hidden sm:inline">Suara: Off</span>
+            </button>
+
+            <!-- Test EWS Broadcast Simulation -->
+            <button onclick="triggerSimulatedLiveAlert(); playBtnClickSound();" class="btn-ripple flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-red-600/30 transition-all">
+                <i class="fa-solid fa-tower-broadcast animate-pulse"></i>
+                <span>Simulasi Peringatan Darurat</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Mobile Tab Selector Bar -->
+    <div class="xl:hidden bg-slate-900 border-b border-slate-800 p-2 flex items-center justify-around overflow-x-auto text-xs">
+        <button onclick="switchTab('map-tab'); playBtnClickSound();" class="btn-ripple px-3 py-1.5 rounded-lg font-bold text-cyan-400 whitespace-nowrap">
+            <i class="fa-solid fa-earth-asia"></i> Radar Peta
+        </button>
+        <button onclick="switchTab('history-tab'); playBtnClickSound();" class="btn-ripple px-3 py-1.5 rounded-lg font-bold text-slate-400 whitespace-nowrap">
+            <i class="fa-solid fa-clock-rotate-left"></i> Histori Tsunami
+        </button>
+        <button onclick="switchTab('ai-tab'); playBtnClickSound();" class="btn-ripple px-3 py-1.5 rounded-lg font-bold text-slate-400 whitespace-nowrap">
+            <i class="fa-solid fa-brain"></i> AI Risk
+        </button>
+        <button onclick="switchTab('ews-tab'); playBtnClickSound();" class="btn-ripple px-3 py-1.5 rounded-lg font-bold text-slate-400 whitespace-nowrap">
+            <i class="fa-solid fa-shield-halved"></i> EWS & Mitigasi
+        </button>
+    </div>
+
+    <!-- EMERGENCY LIVE TICKER -->
+    <div class="bg-slate-950 border-b border-slate-800/80 px-4 py-2 flex items-center gap-3 text-xs">
+        <span class="flex items-center gap-1.5 font-black text-red-400 bg-red-950/80 px-2.5 py-1 rounded-md border border-red-500/30 shrink-0">
+            <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+            LIVE BMKG
+        </span>
+        <div class="overflow-hidden whitespace-nowrap w-full">
+            <div id="ticker-text" class="inline-block animate-marquee pl-full text-slate-300 font-medium">
+                GEOPREDIKSI NUSANTARA: Terhubung ke BMKG TEWS & PVMBG Indonesia. Memuat data real-time parameter gempa & kondisi laut...
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN VIEW CONTAINER -->
+    <main class="flex-1 relative flex flex-col">
+
+        <!-- ================= SECTION 1: PETA RADAR & SIMULASI SEISMIK ================= -->
+        <div id="map-tab" class="tab-content flex-1 flex flex-col lg:flex-row relative">
+            
+            <!-- Map Controls Sidebar -->
+            <aside class="w-full lg:w-96 bg-slate-900/95 border-b lg:border-r border-slate-800/80 p-4 z-20 flex flex-col gap-4 max-h-[50vh] lg:max-h-none overflow-y-auto">
+                
+                <!-- PANEL "CEK LOKASI SAYA" & FILTER RADIUS -->
+                <div class="glass-card rounded-2xl p-4 border border-cyan-500/40 relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-900/90 to-cyan-950/20">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-cyan-400 mb-3 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-location-crosshairs text-cyan-400"></i> Geolokasi & Analisis Jarak
+                        </span>
+                        <span id="user-geo-status" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">Belum Dideteksi</span>
+                    </h4>
+
+                    <button id="get-location-btn" onclick="getUserLocation(); playBtnClickSound();" class="btn-ripple w-full bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/30 mb-3">
+                        <i class="fa-solid fa-location-arrow"></i> <span>Cek Lokasi Saya & Hitung Risiko</span>
+                    </button>
+
+                    <!-- Radius Filter Selector -->
+                    <div class="space-y-1.5 text-xs mb-3">
+                        <label class="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                            <span>Filter Radius Bahaya Sekitar:</span>
+                            <span id="radius-val-label" class="text-cyan-400 font-mono font-bold">500 Km</span>
+                        </label>
+                        <select id="radius-filter-select" onchange="updateRadiusFilter(); playBtnClickSound();" class="w-full bg-slate-950 border border-slate-800 text-xs rounded-xl p-2 text-slate-200">
+                            <option value="0">Tampilkan Semua (Tanpa Filter)</option>
+                            <option value="200">200 Km dari Saya</option>
+                            <option value="500" selected>500 Km dari Saya</option>
+                            <option value="1000">1000 Km dari Saya</option>
+                        </select>
+                    </div>
+
+                    <!-- Computed Real-time Location Metrics Card -->
+                    <div id="user-metrics-card" class="hidden bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-2 text-xs">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                            <span class="text-slate-400 text-[11px]">Jarak ke Episentrum:</span>
+                            <span id="user-dist-val" class="font-mono font-extrabold text-cyan-400 text-sm">-- Km</span>
+                        </div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                            <span class="text-slate-400 text-[11px]">Estimasi MMI Lokasi Anda:</span>
+                            <span id="user-mmi-val" class="font-mono font-extrabold text-amber-400 text-sm">--</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400 text-[11px]">Waktu Tiba S-Wave (ETA):</span>
+                            <span id="user-swave-val" class="font-mono font-extrabold text-red-400 text-sm">-- Detik</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Latest Quake Highlight Card -->
+                <div id="latest-quake-card" class="glass-card rounded-2xl p-4 border border-slate-700/60 relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-satellite-dish text-cyan-400"></i> Gempa Terkini (BMKG Realtime)
+                        </span>
+                        <span id="quake-time" class="text-[11px] bg-slate-800 px-2 py-0.5 rounded text-slate-400 font-mono">--:-- WIB</span>
+                    </div>
+
+                    <div class="flex items-baseline gap-2 mb-1">
+                        <span id="quake-mag" class="text-3xl font-black text-red-500">M --</span>
+                        <span id="quake-depth" class="text-xs text-amber-400 bg-amber-950/80 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-bold">Kedalaman: --</span>
+                    </div>
+
+                    <h3 id="quake-location" class="text-sm font-bold text-slate-100 mb-2 line-clamp-2">Memuat data BMKG...</h3>
+                    
+                    <div class="grid grid-cols-2 gap-2 text-xs border-t border-slate-800 pt-2.5 text-slate-300">
+                        <div>
+                            <span class="text-slate-500 block text-[10px]">Koordinat:</span>
+                            <span id="quake-coords" class="font-mono font-medium">--</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block text-[10px]">Potensi Tsunami:</span>
+                            <span id="quake-tsunami" class="font-bold text-emerald-400">--</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 flex gap-2">
+                        <button onclick="centerMapOnLatestQuake(); playBtnClickSound();" class="btn-ripple flex-1 bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 shadow-md">
+                            <i class="fa-solid fa-crosshairs"></i> Fokus Epicenter
+                        </button>
+                        <button onclick="playSeismicSimulateSound(); playBtnClickSound();" class="btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-xl font-bold border border-slate-700 transition-all flex items-center gap-1.5" title="Putar Efek Suara Guncangan">
+                            <i class="fa-solid fa-volume-high text-amber-400"></i> Suara Seismik
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Kontrol Animasi Gelombang Seismik -->
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-wave-square text-cyan-400"></i> Kontrol Animasi Gelombang
+                        </span>
+                        <span id="anim-status-badge" class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-mono font-bold">Aktif</span>
+                    </h4>
+                    <div class="flex gap-2">
+                        <button id="toggle-anim-btn" onclick="toggleWaveAnimation(); playBtnClickSound();" class="btn-ripple flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20">
+                            <i id="anim-btn-icon" class="fa-solid fa-pause"></i> <span id="anim-btn-text">Hentikan Animasi</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Basemap Switcher Selector -->
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                        <i class="fa-solid fa-map text-cyan-400"></i> Mode Peta (Basemap Switcher)
+                    </h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <button onclick="setBasemap('google-hybrid'); playBtnClickSound();" id="bm-google-hybrid" class="bm-btn btn-ripple active p-2 rounded-xl bg-cyan-600 text-white font-bold border border-cyan-500 flex items-center gap-1.5 justify-center">
+                            <i class="fa-solid fa-satellite"></i> Google Hybrid
+                        </button>
+                        <button onclick="setBasemap('google-roadmap'); playBtnClickSound();" id="bm-google-roadmap" class="bm-btn btn-ripple p-2 rounded-xl bg-slate-950/80 text-slate-300 font-bold border border-slate-800 hover:bg-slate-800 flex items-center gap-1.5 justify-center">
+                            <i class="fa-solid fa-road"></i> Google Map
+                        </button>
+                        <button onclick="setBasemap('carto-dark'); playBtnClickSound();" id="bm-carto-dark" class="bm-btn btn-ripple p-2 rounded-xl bg-slate-950/80 text-slate-300 font-bold border border-slate-800 hover:bg-slate-800 flex items-center gap-1.5 justify-center">
+                            <i class="fa-solid fa-moon"></i> Carto Dark
+                        </button>
+                        <button onclick="setBasemap('osm'); playBtnClickSound();" id="bm-osm" class="bm-btn btn-ripple p-2 rounded-xl bg-slate-950/80 text-slate-300 font-bold border border-slate-800 hover:bg-slate-800 flex items-center gap-1.5 justify-center">
+                            <i class="fa-solid fa-layer-group"></i> OpenStreet
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dynamic Map Layer Toggles -->
+                <div class="glass-card rounded-2xl p-4 border border-slate-800">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                        <i class="fa-solid fa-layer-group text-sky-400"></i> Layer Informasi Bencana
+                    </h4>
+
+                    <div class="space-y-2 text-xs">
+                        <label class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                            <span class="flex items-center gap-2 font-medium">
+                                <i class="fa-solid fa-circle text-red-500 text-[10px]"></i> Gempa Terkini BMKG Realtime
+                            </span>
+                            <input type="checkbox" id="layer-quakes" checked onchange="toggleMapLayer('quakes'); playBtnClickSound();" class="rounded accent-cyan-500">
+                        </label>
+
+                        <label class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                            <span class="flex items-center gap-2 font-medium">
+                                <i class="fa-solid fa-route text-rose-400 text-[10px]"></i> Sesar / Patahan Aktif (Megathrust/Lembang)
+                            </span>
+                            <input type="checkbox" id="layer-faults" checked onchange="toggleMapLayer('faults'); playBtnClickSound();" class="rounded accent-cyan-500">
+                        </label>
+
+                        <label class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                            <span class="flex items-center gap-2 font-medium">
+                                <i class="fa-solid fa-draw-polygon text-purple-400 text-[10px]"></i> Lempeng Tektonik Utama
+                            </span>
+                            <input type="checkbox" id="layer-plates" checked onchange="toggleMapLayer('plates'); playBtnClickSound();" class="rounded accent-cyan-500">
+                        </label>
+
+                        <label class="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                            <span class="flex items-center gap-2 font-medium">
+                                <i class="fa-solid fa-volcano text-amber-500 text-[10px]"></i> Gunung Api Aktif Komprehensif (PVMBG/MAGMA)
+                            </span>
+                            <input type="checkbox" id="layer-volcanoes" checked onchange="toggleMapLayer('volcanoes'); playBtnClickSound();" class="rounded accent-cyan-500">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Sound Status Indicator -->
+                <div class="glass-card rounded-2xl p-3 border border-slate-800 text-xs flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></div>
+                        <span class="text-slate-300 font-semibold">Status Efek Suara Seismik</span>
+                    </div>
+                    <span id="seismic-sound-badge" class="text-[10px] bg-slate-800 px-2.5 py-0.5 rounded text-slate-400 font-mono">Pasif</span>
+                </div>
+            </aside>
+
+            <!-- Map Viewport -->
+            <div class="flex-1 relative h-[55vh] lg:h-auto min-h-[420px]">
+                <div id="map" class="w-full h-full bg-slate-950 z-10"></div>
+
+                <!-- Map Legend -->
+                <div class="absolute bottom-6 right-6 z-20 glass-panel p-3.5 rounded-2xl border border-slate-700/80 shadow-2xl text-xs space-y-1.5 hidden sm:block">
+                    <div class="font-extrabold text-slate-200 mb-1 border-b border-slate-800 pb-1">Keterangan Peta & Gelombang</div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-sky-500 border border-cyan-200 shadow-sm shadow-sky-500"></span>
+                        <span class="text-slate-300">Lokasi Anda (Geolokasi)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-red-600 border border-red-300"></span>
+                        <span class="text-slate-300">Pusat Gempa (M ≥ 6.0)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-amber-500 border border-amber-300"></span>
+                        <span class="text-slate-300">Pusat Gempa (M 5.0 - 5.9)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-1 bg-red-500 rounded-full"></span>
+                        <span class="text-slate-300">Garis Sesar / Megathrust Aktif</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-1 bg-purple-500 rounded-full"></span>
+                        <span class="text-slate-300">Batas Lempeng Tektonik Utama</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full border-2 border-amber-500 bg-amber-500/20"></span>
+                        <span class="text-slate-300">Gunung Api Aktif PVMBG</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= SECTION 2: HISTORI GEMPA & TRACKING TSUNAMI ================= -->
+        <div id="history-tab" class="tab-content hidden flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+            
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                <div>
+                    <h2 class="text-2xl font-black text-white flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i> Rekapitulasi Histori Gempa & Tsunami Indonesia (BMKG 2004-2026)
+                    </h2>
+                    <p class="text-slate-400 text-xs sm:text-sm">Arsip lengkap bencana gempa bumi, ketinggian tsunami, skala intensitas MMI, korban jiwa, serta dampak kerusakan infrastruktur. Klik tombol <strong>Peta</strong> untuk simulasi jangkauan gelombang seismiknya.</p>
+                </div>
+
+                <!-- Search & Filter Controls -->
+                <div class="flex items-center gap-2">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-500 text-xs"></i>
+                        <input type="text" id="history-search-input" onkeyup="filterHistoryTable()" placeholder="Cari wilayah/lokasi..." class="bg-slate-900 border border-slate-800 text-xs rounded-xl pl-8 pr-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500 w-48 sm:w-64">
+                    </div>
+                    <select id="history-filter-select" onchange="filterHistoryTable(); playBtnClickSound();" class="bg-slate-900 border border-slate-800 text-xs rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="all">Semua Riwayat (2004 - 2026 Data BMKG)</option>
+                        <option value="tsunami">Berpotensi Tsunami</option>
+                        <option value="major">M ≥ 7.0 (Sangat Kuat)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Historical Cards Grid -->
+            <div id="history-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Injected dynamically by JavaScript -->
+            </div>
+        </div>
+
+        <!-- ================= SECTION 3: KALKULATOR AI RISK & PREDIKSI ================= -->
+        <div id="ai-tab" class="tab-content hidden flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full space-y-8">
+            
+            <div class="text-center max-w-3xl mx-auto space-y-2">
+                <span class="px-3 py-1 text-xs font-extrabold rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 uppercase tracking-wider">SimuPredict AI Engine</span>
+                <h2 class="text-3xl font-black text-white">Kalkulator Estimasi Risiko Dampak Seismik & Tsunami</h2>
+                <p class="text-slate-400 text-sm">Hitung prediksi skala MMI, waktu kedatangan gelombang S-Wave, grafik probabilitas potensi tsunami, serta penjelasan level kesiapsiagaan darurat.</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Calculator Inputs -->
+                <div class="lg:col-span-5 glass-card rounded-2xl p-6 border border-slate-800 space-y-5">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                        <i class="fa-solid fa-sliders text-cyan-400"></i> Parameter Input Simulasi
+                    </h3>
+
+                    <!-- Slider Magnitude -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs font-bold">
+                            <span class="text-slate-300">Magnitudo Gempa (M):</span>
+                            <span id="ai-mag-val" class="text-cyan-400 font-mono">6.5 M</span>
+                        </div>
+                        <input type="range" id="ai-mag-input" min="4.0" max="9.0" step="0.1" value="6.5" oninput="calculateAIRisk()" class="w-full accent-cyan-500">
+                    </div>
+
+                    <!-- Slider Depth (Kedalaman) -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs font-bold">
+                            <span class="text-slate-300">Kedalaman Hiposenter (Depth):</span>
+                            <span id="ai-depth-val" class="text-cyan-400 font-mono">15 Km</span>
+                        </div>
+                        <input type="range" id="ai-depth-input" min="5" max="300" step="5" value="15" oninput="calculateAIRisk()" class="w-full accent-cyan-500">
+                    </div>
+
+                    <!-- Slider Distance -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs font-bold">
+                            <span class="text-slate-300">Jarak Hiposenter Lokasi Anda:</span>
+                            <span id="ai-dist-val" class="text-cyan-400 font-mono">45 Km</span>
+                        </div>
+                        <input type="range" id="ai-dist-input" min="5" max="300" step="5" value="45" oninput="calculateAIRisk()" class="w-full accent-cyan-500">
+                    </div>
+
+                    <!-- Soil / Building Type -->
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-300 block">Karakteristik Tanah & Konstruksi:</label>
+                        <select id="ai-soil-select" onchange="calculateAIRisk(); playBtnClickSound();" class="w-full bg-slate-900 border border-slate-800 text-xs rounded-xl p-2.5 text-slate-200">
+                            <option value="sediment">Tanah Lunak / Sedimen (Amplifikasi Tinggi)</option>
+                            <option value="medium" selected>Tanah Sedang / Batuan Campuran</option>
+                            <option value="hardrock">Batuan Keras / Pegunungan (Amplifikasi Rendah)</option>
+                        </select>
+                    </div>
+
+                    <div class="pt-2">
+                        <button onclick="calculateAIRisk(); playBtnClickSound();" class="btn-ripple w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-cyan-600/30">
+                            Hitung Ulang Kalkulasi AI
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Calculator Output Cards -->
+                <div class="lg:col-span-7 space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        
+                        <div class="glass-card rounded-2xl p-5 border border-slate-800">
+                            <span class="text-xs font-bold text-slate-400 block mb-1">Estimasi Intensi MMI</span>
+                            <span id="res-mmi" class="text-3xl font-black text-amber-400 font-mono">MMI VI - VII</span>
+                            <p id="res-mmi-desc" class="text-xs text-slate-400 mt-2">Guncangan dirasakan kuat oleh semua orang. Dinding retak halus.</p>
+                        </div>
+
+                        <div class="glass-card rounded-2xl p-5 border border-slate-800">
+                            <span class="text-xs font-bold text-slate-400 block mb-1">Estimasi Waktu Gelombang S</span>
+                            <span id="res-swave-eta" class="text-3xl font-black text-cyan-400 font-mono">~12.8 Detik</span>
+                            <p class="text-xs text-slate-400 mt-2">Waktu tersisa untuk perlindungan (Drop, Cover, Hold On).</p>
+                        </div>
+
+                    </div>
+
+                    <!-- PENJELASAN LEVEL KESIAPSIAGAAN -->
+                    <div id="readiness-panel" class="glass-card rounded-2xl p-5 border border-slate-800 space-y-2 transition-all">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> Level Kesiapsiagaan & Tindakan Cepat
+                            </span>
+                            <span id="readiness-badge" class="px-3 py-1 text-xs font-black rounded-full uppercase bg-emerald-950 text-emerald-400 border border-emerald-800">
+                                Hijau (Aman / Waspada)
+                            </span>
+                        </div>
+                        <h4 id="readiness-title" class="text-base font-bold text-white">Status Normal / Kesiapsiagaan Rutin</h4>
+                        <p id="readiness-desc" class="text-xs text-slate-300 leading-relaxed">
+                            Potensi kerusakan fisik rendah. Pertahankan kewaspadaan standar dan pastikan jalur evakuasi bebas dari rintangan.
+                        </p>
+                    </div>
+
+                    <!-- GRAFIK POTENSI TSUNAMI -->
+                    <div class="glass-card rounded-2xl p-5 border border-slate-800 space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                            <span><i class="fa-solid fa-water text-cyan-400"></i> Grafik Probabilitas Potensi Tsunami</span>
+                            <span id="tsunami-status-label" class="text-[10px] text-cyan-400 font-mono font-bold">Potensi Rendah (12%)</span>
+                        </h4>
+                        <div class="h-44">
+                            <canvas id="tsunamiProbabilityChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Disaster Trend Analytics Chart -->
+                    <div class="glass-card rounded-2xl p-5 border border-slate-800 space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                            <span><i class="fa-solid fa-chart-line text-cyan-400"></i> Tren Frekuensi Gempa M ≥ 5.0 Indonesia</span>
+                            <span class="text-[10px] text-slate-500">Data Historis 2004-2026</span>
+                        </h4>
+                        <div class="h-40">
+                            <canvas id="disasterTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= SECTION 4: PUSAT EWS & MITIGASI (LENGKAP) ================= -->
+        <div id="ews-tab" class="tab-content hidden flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full space-y-8">
+            <div class="text-center max-w-3xl mx-auto space-y-2">
+                <span class="px-3 py-1 text-xs font-black rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 uppercase tracking-wider">Protokol Keselamatan Resmi</span>
+                <h2 class="text-3xl font-black text-white">Sistem Peringatan Dini & Panduan Evakuasi</h2>
+                <p class="text-slate-400 text-sm">Akses cepat nomor kontak darurat nasional, simulasi Cell Broadcast J-Alert, serta checklist Tas Siaga Bencana (TSB) dan panduan mitigasi komprehensif.</p>
+            </div>
+
+            <!-- Panduan Mitigasi Langkah demi Langkah -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Pra Bencana -->
+                <div class="glass-card rounded-2xl p-6 border border-slate-800 space-y-3">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-lg font-black">
+                        1
+                    </div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-check text-cyan-400"></i> Sebelum Gempa (Pra Bencana)
+                    </h3>
+                    <ul class="text-xs text-slate-300 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li>Kenali area aman di dalam rumah (kolong meja yang kuat, sudut bangunan penyangga).</li>
+                        <li>Pastikan perabotan berat (lemari, rak) dipaku kuat ke dinding agar tidak roboh.</li>
+                        <li>Simpan dokumen penting di tempat kedap air yang mudah dijangkau.</li>
+                        <li>Siapkan <strong>Tas Siaga Bencana (TSB)</strong> di dekat pintu keluar.</li>
+                        <li>Pahami jalur evakuasi dan titik kumpul aman di sekitar lingkungan Anda.</li>
+                    </ul>
+                </div>
+
+                <!-- Saat Bencana -->
+                <div class="glass-card rounded-2xl p-6 border border-red-500/30 space-y-3 bg-red-950/10">
+                    <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 text-lg font-black">
+                        2
+                    </div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-person-falling-burst text-red-400"></i> Saat Gempa Terjadi
+                    </h3>
+                    <ul class="text-xs text-slate-300 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li><strong class="text-red-400">Drop, Cover, Hold On:</strong> Bertekuk lutut, lindungi kepala di bawah meja, dan berpegangan.</li>
+                        <li>Jauhi kaca, jendela, tiang listrik, dan bangunan tinggi jika berada di luar ruangan.</li>
+                        <li>Jangan gunakan lift! Gunakan tangga darurat secara tertib.</li>
+                        <li>Jika sedang berkendara, pinggirkan kendaraan di tempat terbuka dan matikan mesin.</li>
+                        <li>Tetap tenang dan jangan panik agar dapat berpikir jernih.</li>
+                    </ul>
+                </div>
+
+                <!-- Pasca Bencana -->
+                <div class="glass-card rounded-2xl p-6 border border-slate-800 space-y-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg font-black">
+                        3
+                    </div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-house-medical-flag text-amber-400"></i> Setelah Gempa (Pasca Bencana)
+                    </h3>
+                    <ul class="text-xs text-slate-300 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li>Waspadai <strong>gempa susulan</strong> yang bisa merobohkan struktur rapuh.</li>
+                        <li>Periksa adanya kebocoran gas, korsleting listrik, atau kerusakan struktur bangunan.</li>
+                        <li>Segera keluar menuju titik kumpul jika berada di dalam bangunan berisiko.</li>
+                        <li>Pantau informasi resmi dari BMKG atau BNPB, abaikan rumor tak berdasar (hoaks).</li>
+                        <li>Berikan pertolongan pertama pada korban yang mengalami luka ringan.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Panduan Evakuasi Tsunami -->
+            <div class="glass-card rounded-2xl p-6 border border-sky-500/30 bg-gradient-to-r from-slate-900 via-sky-950/20 to-slate-900 space-y-3">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-water text-sky-400"></i> Mitigasi Khusus Tsunami (Aturan 20-20-20)
+                </h3>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Jika Anda berada di daerah pesisir pantai dan merasakan guncangan gempa kuat berdurasi lebih dari 20 detik, segera terapkan prinsip <strong>20-20-20</strong>:
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                    <div class="bg-slate-950/80 p-3 rounded-xl border border-sky-500/20 text-center">
+                        <span class="text-xl font-black text-sky-400 block font-mono">20 Detik</span>
+                        <span class="text-[11px] text-slate-400">Gempa berdurasi ≥ 20 detik</span>
+                    </div>
+                    <div class="bg-slate-950/80 p-3 rounded-xl border border-sky-500/20 text-center">
+                        <span class="text-xl font-black text-sky-400 block font-mono">20 Menit</span>
+                        <span class="text-[11px] text-slate-400">Waktu evakuasi dalam 20 menit</span>
+                    </div>
+                    <div class="bg-slate-950/80 p-3 rounded-xl border border-sky-500/20 text-center">
+                        <span class="text-xl font-black text-sky-400 block font-mono">20 Meter</span>
+                        <span class="text-[11px] text-slate-400">Lari ke ketinggian minimal 20m</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Kit Checklist Card -->
+            <div class="glass-card rounded-2xl p-6 border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-kit-medical text-red-500"></i> Checklist Tas Siaga Bencana (Emergency Kit)
+                        </h3>
+                        <p class="text-xs text-slate-400">Persiapan mandiri bertahan hidup selama 72 jam pertama pasca bencana.</p>
+                    </div>
+                    <span class="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded-full border border-slate-700 w-fit">Mandiri 72 Jam</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Air Minum (Minimal 3 Liter)</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Makanan Tahan Lama (Roti/Sarden)</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Kotak P3K & Obat Pribadi</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Senter & Baterai Cadangan</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Peluit Darurat (Sinyal Suara)</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Pakaian Ganti & Selimut Khusus</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Uang Tunai & Salinan Dokumen</span>
+                    </label>
+                    <label onclick="playBtnClickSound()" class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-900 transition-colors">
+                        <input type="checkbox" checked class="rounded accent-cyan-500 w-4 h-4">
+                        <span class="text-slate-300">Powerbank / Radio Portable</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Emergency Contacts & Official Links Grid -->
+            <div>
+                <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-phone-volume text-emerald-400"></i> Nomor Panggilan Darurat Resmi
+                </h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs mb-6">
+                    <a href="tel:117" onclick="playBtnClickSound()" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex flex-col justify-between group">
+                        <span class="font-bold text-slate-200 block">BNPB</span>
+                        <span class="text-[10px] text-slate-400">Pusdalops</span>
+                        <span class="font-mono font-bold text-emerald-400 text-sm mt-2 group-hover:scale-105 transition-transform">117</span>
+                    </a>
+                    <a href="tel:115" onclick="playBtnClickSound()" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex flex-col justify-between group">
+                        <span class="font-bold text-slate-200 block">BASARNAS</span>
+                        <span class="text-[10px] text-slate-400">Pertolongan SAR</span>
+                        <span class="font-mono font-bold text-emerald-400 text-sm mt-2 group-hover:scale-105 transition-transform">115</span>
+                    </a>
+                    <a href="tel:119" onclick="playBtnClickSound()" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex flex-col justify-between group">
+                        <span class="font-bold text-slate-200 block">Ambulans</span>
+                        <span class="text-[10px] text-slate-400">Layanan Medis</span>
+                        <span class="font-mono font-bold text-emerald-400 text-sm mt-2 group-hover:scale-105 transition-transform">119</span>
+                    </a>
+                    <a href="tel:110" onclick="playBtnClickSound()" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex flex-col justify-between group">
+                        <span class="font-bold text-slate-200 block">POLRI</span>
+                        <span class="text-[10px] text-slate-400">Kepolisian</span>
+                        <span class="font-mono font-bold text-emerald-400 text-sm mt-2 group-hover:scale-105 transition-transform">110</span>
+                    </a>
+                    <a href="tel:113" onclick="playBtnClickSound()" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex flex-col justify-between group">
+                        <span class="font-bold text-slate-200 block">Damkar</span>
+                        <span class="text-[10px] text-slate-400">Pemadam</span>
+                        <span class="font-mono font-bold text-emerald-400 text-sm mt-2 group-hover:scale-105 transition-transform">113</span>
+                    </a>
+                    <a href="tel:112" onclick="playBtnClickSound()" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex flex-col justify-between group">
+                        <span class="font-bold text-slate-200 block">Panggilan Darurat</span>
+                        <span class="text-[10px] text-slate-400">Layanan Tunggal</span>
+                        <span class="font-mono font-bold text-emerald-400 text-sm mt-2 group-hover:scale-105 transition-transform">112</span>
+                    </a>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <a href="https://www.bmkg.go.id" target="_blank" onclick="playBtnClickSound()" class="glass-card p-5 rounded-2xl border border-slate-800 hover:border-cyan-500/50 transition-all flex items-center justify-between group">
+                        <div>
+                            <h4 class="font-bold text-white text-sm">Portal Resmi BMKG</h4>
+                            <p class="text-xs text-slate-400">bmkg.go.id</p>
+                        </div>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-cyan-400 group-hover:scale-110 transition-transform"></i>
+                    </a>
+
+                    <a href="https://m.bmkg.go.id/gempabumi/gempabumi-terkini.bmkg" target="_blank" onclick="playBtnClickSound()" class="glass-card p-5 rounded-2xl border border-slate-800 hover:border-red-500/50 transition-all flex items-center justify-between group">
+                        <div>
+                            <h4 class="font-bold text-white text-sm">Peta Sebaran BMKG Asli</h4>
+                            <p class="text-xs text-slate-400">m.bmkg.go.id</p>
+                        </div>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-red-400 group-hover:scale-110 transition-transform"></i>
+                    </a>
+
+                    <a href="https://inatews.bmkg.go.id" target="_blank" onclick="playBtnClickSound()" class="glass-card p-5 rounded-2xl border border-slate-800 hover:border-amber-500/50 transition-all flex items-center justify-between group">
+                        <div>
+                            <h4 class="font-bold text-white text-sm">InaTEWS Tsunami Warning</h4>
+                            <p class="text-xs text-slate-400">inatews.bmkg.go.id</p>
+                        </div>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-amber-400 group-hover:scale-110 transition-transform"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- HISTORICAL EARTHQUAKE DETAIL POPUP MODAL -->
+    <div id="history-detail-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center p-4 animate-fade-in">
+        <div class="glass-panel w-full max-w-2xl rounded-3xl border border-cyan-500/40 shadow-2xl overflow-hidden animate-pop-in max-h-[90vh] flex flex-col">
+            
+            <div class="bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 p-5 border-b border-slate-800 relative flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                        <i class="fa-solid fa-house-crack text-lg"></i>
+                    </div>
+                    <div>
+                        <span id="detail-modal-tag" class="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-950 text-red-400 border border-red-800">
+                            DETAIL KEJADIAN HISTORIS
+                        </span>
+                        <h3 id="detail-modal-title" class="text-lg font-black text-white mt-1">Gempabumi Samudra Hindia 2004</h3>
+                    </div>
+                </div>
+                <button onclick="closeHistoryDetailModal(); playBtnClickSound();" class="btn-ripple text-slate-400 hover:text-white text-xl w-8 h-8 rounded-full bg-slate-800/80 flex items-center justify-center border border-slate-700">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5 overflow-y-auto flex-1">
+                
+                <!-- Core Earthquake Metrics -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 text-center">
+                        <span class="text-[10px] text-slate-400 block font-semibold">Magnitudo</span>
+                        <span id="detail-modal-mag" class="text-xl font-black text-red-500 font-mono">M 9.1</span>
+                    </div>
+                    <div class="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 text-center">
+                        <span class="text-[10px] text-slate-400 block font-semibold">Kedalaman</span>
+                        <span id="detail-modal-depth" class="text-sm font-bold text-amber-400 font-mono mt-1 block">30 km</span>
+                    </div>
+                    <div class="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 text-center">
+                        <span class="text-[10px] text-slate-400 block font-semibold">Skala MMI</span>
+                        <span id="detail-modal-mmi" class="text-xs font-bold text-cyan-300 mt-1 block">MMI XI-XII</span>
+                    </div>
+                    <div class="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 text-center">
+                        <span class="text-[10px] text-slate-400 block font-semibold">Tinggi Tsunami</span>
+                        <span id="detail-modal-tsunami" class="text-xs font-bold text-sky-400 mt-1 block">30 - 51m</span>
+                    </div>
+                </div>
+
+                <!-- Casualty Statistics Breakdown -->
+                <div>
+                    <h5 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+                        <i class="fa-solid fa-users text-rose-400"></i> Statistik Korban Terdampak Bencana
+                    </h5>
+                    <div class="grid grid-cols-3 gap-3 bg-red-950/20 border border-red-500/20 p-4 rounded-2xl text-center">
+                        <div class="border-r border-slate-800/80 pr-2">
+                            <span class="text-[11px] text-slate-400 block font-medium">Korban Meninggal</span>
+                            <span id="detail-modal-dead" class="text-lg font-black text-red-400 font-mono">167,540</span>
+                            <span class="text-[9px] text-slate-500 block">Jiwa</span>
+                        </div>
+                        <div class="border-r border-slate-800/80 pr-2">
+                            <span class="text-[11px] text-slate-400 block font-medium">Luka-Luka</span>
+                            <span id="detail-modal-injured" class="text-lg font-black text-amber-400 font-mono">37,063</span>
+                            <span class="text-[9px] text-slate-500 block">Orang</span>
+                        </div>
+                        <div>
+                            <span class="text-[11px] text-slate-400 block font-medium">Pengungsi</span>
+                            <span id="detail-modal-displaced" class="text-lg font-black text-sky-400 font-mono">500,000</span>
+                            <span class="text-[9px] text-slate-500 block">Jiwa</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Damage & Economic Loss Details -->
+                <div class="space-y-3">
+                    <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 space-y-1">
+                        <h6 class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-building-circle-xmark text-amber-500"></i> Kerusakan Infrastruktur & Bangunan
+                        </h6>
+                        <p id="detail-modal-damage" class="text-xs text-slate-400 leading-relaxed pt-1">
+                            --
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-money-bill-trend-up text-emerald-400"></i> Estimasi Total Kerugian Ekonomi
+                        </span>
+                        <span id="detail-modal-loss" class="text-xs font-mono font-bold text-emerald-400">Rp 41.4 Triliun</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Action Button Footer -->
+            <div class="p-4 bg-slate-900/90 border-t border-slate-800 flex gap-3 shrink-0">
+                <button id="detail-modal-replay-btn" class="btn-ripple flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20">
+                    <i class="fa-solid fa-play"></i> Replay Simulasi Sebaran Peta
+                </button>
+                <button onclick="closeHistoryDetailModal(); playBtnClickSound();" class="btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-5 py-2.5 rounded-xl text-xs border border-slate-700">
+                    Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EMERGENCY BROADCAST MODAL -->
+    <div id="call-broadcast-modal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center p-4 animate-fade-in">
+        <div class="glass-panel w-full max-w-lg rounded-3xl border border-red-500/50 shadow-2xl overflow-hidden animate-pop-in">
+            
+            <div class="bg-gradient-to-r from-red-700 via-red-600 to-amber-600 p-5 text-white relative">
+                <div class="flex items-center justify-between">
+                    <span class="flex items-center gap-2 text-xs font-black tracking-widest uppercase bg-black/30 px-3 py-1 rounded-full border border-white/20">
+                        <span class="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span>
+                        LIVE EMERGENCY BROADCAST
+                    </span>
+                    <button onclick="closeEmergencyModal(); playBtnClickSound();" class="btn-ripple text-white/80 hover:text-white text-xl">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <h3 class="text-xl font-black mt-3">SIARAN PERINGATAN DINI BENCANA</h3>
+                <p class="text-xs text-red-100 opacity-90">BMKG TEWS & Nusantara Watch Emergency Cell Broadcast</p>
+            </div>
+
+            <div class="p-6 space-y-5">
+                <div class="bg-red-950/50 border border-red-500/30 rounded-2xl p-4 flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-red-600 flex items-center justify-center text-white text-2xl shrink-0 animate-pulse">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <h4 id="modal-alert-title" class="font-bold text-red-400 text-sm">GEMPA BUMI DETEKSI TERKINI</h4>
+                        <p id="modal-alert-desc" class="text-xs text-slate-300 leading-relaxed">
+                            Terdeteksi guncangan gempa bumi signifikan M 6.2. Tetap tenang, jauhi bangunan tinggi, dan utamakan keselamatan diri!
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-xl p-3 border border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i id="modal-voice-icon" class="fa-solid fa-volume-high text-amber-400 animate-pulse text-lg"></i>
+                        <div>
+                            <span class="text-xs font-semibold text-slate-200 block">Siaran Suara Peringatan BMKG</span>
+                            <span id="modal-voice-status" class="text-[10px] text-slate-400">Menyuarakan instruksi evakuasi...</span>
+                        </div>
+                    </div>
+                    <button onclick="stopEmergencySoundAndSpeech(); playBtnClickSound();" class="btn-ripple px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg text-slate-300 font-semibold border border-slate-700">
+                        Matikan Suara
+                    </button>
+                </div>
+
+                <!-- Emergency Contacts -->
+                <div>
+                    <h5 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                        <i class="fa-solid fa-phone-volume text-emerald-400"></i> Dial Kontak Panggilan Darurat
+                    </h5>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <a href="tel:117" onclick="playBtnClickSound()" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex items-center justify-between group">
+                            <div>
+                                <span class="font-bold text-slate-200 block">BNPB</span>
+                                <span class="text-[10px] text-slate-400">Pusdalops</span>
+                            </div>
+                            <span class="font-mono font-bold text-emerald-400 group-hover:scale-110 transition-transform">117</span>
+                        </a>
+
+                        <a href="tel:115" onclick="playBtnClickSound()" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex items-center justify-between group">
+                            <div>
+                                <span class="font-bold text-slate-200 block">BASARNAS</span>
+                                <span class="text-[10px] text-slate-400">Pertolongan</span>
+                            </div>
+                            <span class="font-mono font-bold text-emerald-400 group-hover:scale-110 transition-transform">115</span>
+                        </a>
+                    </div>
+                </div>
+
+                <button onclick="closeEmergencyModal(); playBtnClickSound();" class="btn-ripple w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 rounded-2xl text-xs transition-all border border-slate-700">
+                    Tutup Siaran Darurat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT CORE LOGIC -->
+    <script>
+        // Application State
+        let map;
+        let activeTileLayer;
+        let quakeMarkersLayer = L.layerGroup();
+        let faultLinesLayer = L.layerGroup();
+        let tectonicPlatesLayer = L.layerGroup();
+        let volcanoMarkersLayer = L.layerGroup();
+        let userLocationLayer = L.layerGroup();
+        let latestQuakeData = null;
+        let lastReportedJam = null;
+        
+        // Geolokasi & Filter Radius State
+        let userCoords = null;
+        let userLocationMarker = null;
+        let userRadiusCircle = null;
+        let filterRadiusKm = 500;
+
+        // Dynamic Chart References
+        let tsunamiChartInstance = null;
+        let trendChartInstance = null;
+
+        // HIGH-PRECISION SMOOTH WAVE ANIMATION STATE
+        let seismicWaveCircleP = null;
+        let seismicWaveCircleP_outer = null;
+        let seismicWaveCircleS = null;
+        let animationFrameId = null;
+        let isWaveAnimating = true;
+        let currentWaveData = { lat: 0, lng: 0, maxP: 0, maxS: 0 };
+        let animProgress = 0;
+        let lastWaveAudioTrigger = 0;
+
+        // Web Audio API Audio Synthesizer
+        let audioCtx = null;
+        let isAudioEnabled = false;
+
+        // Dynamic Click Flash Visual Listener
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('button, a, input[type="checkbox"], select');
+            if (btn) {
+                btn.classList.remove('btn-clicked');
+                void btn.offsetWidth;
+                btn.classList.add('btn-clicked');
+            }
+        });
+
+        // Tile Basemap Providers
+        const basemapProviders = {
+            'google-hybrid': 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+            'google-roadmap': 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+            'carto-dark': 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            'osm': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+        };
+
+        // HISTORI GEMPA DAN TSUNAMI KOMPREHENSIF BMKG (2004 - 2026)
+        const historyEarthquakeData = [
+            {
+                id: 1,
+                tanggal: '26 Des 2004',
+                lokasi: 'Samudra Hindia, Barat Aceh',
+                magnitude: '9.1',
+                kedalaman: '30 km',
+                mmi: 'MMI XI-XII (Extreme)',
+                tsunamiHeight: '30 - 51 Meter',
+                tsunamiStatus: 'PDT-AWAS (Mega-Tsunami)',
+                korban: { meninggal: 167540, luka: 37063, pengungsi: 500000 },
+                kerusakan: '139.000 rumah hancur total, 73 pelabuhan rusak, 1.200 sekolah hancur di Aceh & Nias.',
+                kerugian: 'Rp 41.4 Triliun',
+                lat: 3.316, lng: 95.854
+            },
+            {
+                id: 2,
+                tanggal: '28 Mar 2005',
+                lokasi: 'Nias - Pulau Banyak, Sumatera Utara',
+                magnitude: '8.6',
+                kedalaman: '30 km',
+                mmi: 'MMI IX-X (Ruinous)',
+                tsunamiHeight: '3 - 4 Meter',
+                tsunamiStatus: 'PDT-AWAS',
+                korban: { meninggal: 1303, luka: 1146, pengungsi: 34000 },
+                kerusakan: '80% bangunan di Kota Gunung Sitoli hancur runtuh. 13.000 rumah rusak berat.',
+                kerugian: 'Rp 5.2 Triliun',
+                lat: 2.074, lng: 97.013
+            },
+            {
+                id: 3,
+                tanggal: '27 Mei 2006',
+                lokasi: 'Bantul - Yogyakarta',
+                magnitude: '6.3',
+                kedalaman: '12 km',
+                mmi: 'MMI IX (Destructive)',
+                tsunamiHeight: 'Tidak Ada Tsunami',
+                tsunamiStatus: 'Tidak Berpotensi Tsunami',
+                korban: { meninggal: 5778, luka: 37883, pengungsi: 139000 },
+                kerusakan: '156.662 rumah roboh total di Bantul, Klaten, & Sleman. Kompleks Candi Prambanan mengalami kerusakan fisik.',
+                kerugian: 'Rp 29.1 Triliun',
+                lat: -7.962, lng: 110.458
+            },
+            {
+                id: 4,
+                tanggal: '17 Jul 2006',
+                lokasi: 'Pangandaran, Jawa Barat',
+                magnitude: '7.7',
+                kedalaman: '34 km',
+                mmi: 'MMI VI-VII (Strong)',
+                tsunamiHeight: '5 - 8 Meter',
+                tsunamiStatus: 'PDT-AWAS (Tsunami Lambat / Tsunami Earthquake)',
+                korban: { meninggal: 668, luka: 9299, pengungsi: 35000 },
+                kerusakan: 'Kawasan pemukiman pesisir Pangandaran, Cilacap, dan Ciamis sapu bersih terjang gelombang.',
+                kerugian: 'Rp 1.1 Triliun',
+                lat: -9.295, lng: 107.347
+            },
+            {
+                id: 5,
+                tanggal: '12 Sep 2007',
+                lokasi: 'Bengkulu - Mentawai, Sumatera',
+                magnitude: '8.4',
+                kedalaman: '30 km',
+                mmi: 'MMI VIII-IX (Severe)',
+                tsunamiHeight: '3 - 5 Meter',
+                tsunamiStatus: 'PDT-AWAS',
+                korban: { meninggal: 23, luka: 88, pengungsi: 12000 },
+                kerusakan: '4.314 rumah runtuh berat, kerusakan infrastruktur meluas di Kota Bengkulu.',
+                kerugian: 'Rp 2.4 Triliun',
+                lat: -4.520, lng: 101.374
+            },
+            {
+                id: 6,
+                tanggal: '30 Sep 2009',
+                lokasi: 'Lepas Pantai Padang, Sumatera Barat',
+                magnitude: '7.6',
+                kedalaman: '87 km',
+                mmi: 'MMI VIII (Severe)',
+                tsunamiHeight: '0.2 Meter',
+                tsunamiStatus: 'Waspada Tsunami',
+                korban: { meninggal: 1117, luka: 3537, pengungsi: 135000 },
+                kerusakan: '135.448 rumah rusak berat, Hotel Ambacang runtuh total, longsor di Pariaman.',
+                kerugian: 'Rp 21.6 Triliun',
+                lat: -0.720, lng: 99.867
+            },
+            {
+                id: 7,
+                tanggal: '25 Okt 2010',
+                lokasi: 'Kepulauan Mentawai, Sumatera Barat',
+                magnitude: '7.8',
+                kedalaman: '20 km',
+                mmi: 'MMI VII (Very Strong)',
+                tsunamiHeight: '3 - 7 Meter',
+                tsunamiStatus: 'PDT-AWAS (Tsunami Earthquake)',
+                korban: { meninggal: 509, luka: 21, pengungsi: 11425 },
+                kerusakan: 'Dusun Pagai Selatan terendam banjir gelombang pasang masif, ratusan rumah hancur.',
+                kerugian: 'Rp 348 Miliar',
+                lat: -3.484, lng: 100.114
+            },
+            {
+                id: 8,
+                tanggal: '11 Apr 2012',
+                lokasi: 'Lepas Pantai Barat Aceh (Outer Rise)',
+                magnitude: '8.6',
+                kedalaman: '22 km',
+                mmi: 'MMI VI-VII (Strong)',
+                tsunamiHeight: '1.0 Meter',
+                tsunamiStatus: 'PDT-SIAGA',
+                korban: { meninggal: 10, luka: 12, pengungsi: 2500 },
+                kerusakan: 'Sesar geser mendatar meminimalkan dampak tsunami masif meski terjadi gempa susulan M 8.2.',
+                kerugian: 'Rp 120 Miliar',
+                lat: 2.311, lng: 93.063
+            },
+            {
+                id: 9,
+                tanggal: '07 Des 2016',
+                lokasi: 'Pidie Jaya, Aceh',
+                magnitude: '6.5',
+                kedalaman: '13 km',
+                mmi: 'MMI VIII (Severe)',
+                tsunamiHeight: 'Darat (Tidak Ada Tsunami)',
+                tsunamiStatus: 'Tidak Berpotensi Tsunami',
+                korban: { meninggal: 104, luka: 857, pengungsi: 85133 },
+                kerusakan: '11.600 bangunan rusak parah, 105 ruko roboh, 14 masjid hancur.',
+                kerugian: 'Rp 3.1 Triliun',
+                lat: 5.281, lng: 96.108
+            },
+            {
+                id: 10,
+                tanggal: '05 Agu 2018',
+                lokasi: 'Lombok Utara, Nusa Tenggara Barat',
+                magnitude: '7.0',
+                kedalaman: '15 km',
+                mmi: 'MMI VIII (Severe)',
+                tsunamiHeight: '0.15 Meter',
+                tsunamiStatus: 'Waspada Tsunami',
+                korban: { meninggal: 563, luka: 7145, pengungsi: 417000 },
+                kerusakan: '129.000 rumah hancur/rusak berat di Lombok Barat, Utara, dan Mataram.',
+                kerugian: 'Rp 12.5 Triliun',
+                lat: -8.287, lng: 116.452
+            },
+            {
+                id: 11,
+                tanggal: '28 Sep 2018',
+                lokasi: 'Donggala - Palu, Sulawesi Tengah',
+                magnitude: '7.5',
+                kedalaman: '10 km',
+                mmi: 'MMI X-XI (Violent)',
+                tsunamiHeight: '2.2 - 11.3 Meter',
+                tsunamiStatus: 'PDT-AWAS (Tsunami & Likuefaksi)',
+                korban: { meninggal: 4340, luka: 10679, pengungsi: 206000 },
+                kerusakan: '68.451 rumah rusak berat akibat fenomena likuefaksi di Petobo & Balaroa. Jembatan IV Palu rubuh.',
+                kerugian: 'Rp 18.4 Triliun',
+                lat: -0.178, lng: 119.840
+            },
+            {
+                id: 12,
+                tanggal: '22 Des 2018',
+                lokasi: 'Selat Sunda (Longsoran Anak Krakatau)',
+                magnitude: '5.1',
+                kedalaman: '1 km',
+                mmi: 'MMI VI (Strong)',
+                tsunamiHeight: '5.0 Meter',
+                tsunamiStatus: 'PDT-SIAGA (Tsunami Volkanik)',
+                korban: { meninggal: 437, luka: 14059, pengungsi: 33719 },
+                kerusakan: '526 hotel & penginapan hancur di pesisir pantai Carita & Anyer.',
+                kerugian: 'Rp 3.5 Triliun',
+                lat: -6.102, lng: 105.423
+            },
+            {
+                id: 13,
+                tanggal: '15 Jan 2021',
+                lokasi: 'Mamuju - Majene, Sulawesi Barat',
+                magnitude: '6.2',
+                kedalaman: '18 km',
+                mmi: 'MMI VI-VII (Strong)',
+                tsunamiHeight: 'Tidak Ada Tsunami',
+                tsunamiStatus: 'Tidak Berpotensi Tsunami',
+                korban: { meninggal: 105, luka: 3369, pengungsi: 27850 },
+                kerusakan: 'Gedung Kantor Gubernur Sulbar bertingkat roboh total, RSUD Mamuju hancur.',
+                kerugian: 'Rp 829 Miliar',
+                lat: -2.980, lng: 118.900
+            },
+            {
+                id: 14,
+                tanggal: '21 Nov 2022',
+                lokasi: 'Cugenang - Cianjur, Jawa Barat',
+                magnitude: '5.6',
+                kedalaman: '10 km',
+                mmi: 'MMI VII-VIII (Very Strong)',
+                tsunamiHeight: 'Darat (Tidak Ada Tsunami)',
+                tsunamiStatus: 'Tidak Berpotensi Tsunami',
+                korban: { meninggal: 602, luka: 7729, pengungsi: 114683 },
+                kerusakan: '56.311 rumah rusak berat di Kecamatan Cugenang & Cianjur akibat pergerakan Sesar Cugenang.',
+                kerugian: 'Rp 4.0 Triliun',
+                lat: -6.840, lng: 107.090
+            },
+            {
+                id: 15,
+                tanggal: '10 Jan 2023',
+                lokasi: 'Maluku Barat Daya - Laut Banda',
+                magnitude: '7.5',
+                kedalaman: '130 km',
+                mmi: 'MMI V-VI (Moderate-Strong)',
+                tsunamiHeight: '0.1 Meter',
+                tsunamiStatus: 'Waspada Tsunami',
+                korban: { meninggal: 1, luka: 5, pengungsi: 600 },
+                kerusakan: '500+ rumah rusak di Saumlaki, fenomena pulau baru muncul di laut Tanimbar.',
+                kerugian: 'Rp 145 Miliar',
+                lat: -7.070, lng: 130.010
+            },
+            {
+                id: 16,
+                tanggal: '17 Apr 2024',
+                lokasi: 'Gunung Ruang, Sulawesi Utara',
+                magnitude: 'Erupsi Vulkanik',
+                kedalaman: '0 km',
+                mmi: 'MMI VII (Vulkanik Eruption)',
+                tsunamiHeight: 'Waspada Gelombang Pasang 2m',
+                tsunamiStatus: 'PDT-SIAGA (Tsunami Vulkanik)',
+                korban: { meninggal: 0, luka: 12, pengungsi: 12000 },
+                kerusakan: 'Seluruh pulau Ruang dan Tagulandang dikosongkan total karena hujan batu abu vulkanik masif.',
+                kerugian: 'Rp 650 Miliar',
+                lat: 2.300, lng: 125.370
+            },
+            {
+                id: 17,
+                tanggal: '22 Mar 2024',
+                lokasi: 'Laut Jawa Utara Tuban - Bawean',
+                magnitude: '6.5',
+                kedalaman: '10 km',
+                mmi: 'MMI V-VI (Moderate)',
+                tsunamiHeight: 'Tidak Berpotensi Tsunami',
+                tsunamiStatus: 'Tidak Berpotensi',
+                korban: { meninggal: 0, luka: 8, pengungsi: 15000 },
+                kerusakan: 'Ratusan rumah retak dan rusak di Pulau Bawean, guncangan dirasakan hingga Surabaya dan Semarang.',
+                kerugian: 'Rp 310 Miliar',
+                lat: -5.740, lng: 112.320
+            },
+            {
+                id: 18,
+                tanggal: '18 Sep 2024',
+                lokasi: 'Kertasari - Kabupaten Bandung, Jawa Barat',
+                magnitude: '5.0',
+                kedalaman: '10 km',
+                mmi: 'MMI V-VI (Moderate)',
+                tsunamiHeight: 'Darat (Tidak Ada Tsunami)',
+                tsunamiStatus: 'Tidak Berpotensi Tsunami',
+                korban: { meninggal: 2, luka: 159, pengungsi: 4100 },
+                kerusakan: '4.120 rumah rusak di Kertasari dan Pangalengan akibat aktivitas Sesar Garsela.',
+                kerugian: 'Rp 280 Miliar',
+                lat: -7.230, lng: 107.650
+            },
+            {
+                id: 19,
+                tanggal: '14 Mei 2025',
+                lokasi: 'Megathrust Selat Sunda',
+                magnitude: '6.8',
+                kedalaman: '24 km',
+                mmi: 'MMI VI-VII (Strong)',
+                tsunamiHeight: '0.4 Meter',
+                tsunamiStatus: 'Waspada Tsunami',
+                korban: { meninggal: 3, luka: 42, pengungsi: 2100 },
+                kerusakan: 'Fasilitas umum dan dermaga di Pandeglang & Banten Selatan mengalami retak struktural.',
+                kerugian: 'Rp 520 Miliar',
+                lat: -6.650, lng: 104.800
+            },
+            {
+                id: 20,
+                tanggal: '12 Feb 2026',
+                lokasi: 'Sesar Lembang - Bandung Utara',
+                magnitude: '5.2',
+                kedalaman: '8 km',
+                mmi: 'MMI VI-VII (Strong)',
+                tsunamiHeight: 'Darat (Tidak Ada Tsunami)',
+                tsunamiStatus: 'Tidak Berpotensi',
+                korban: { meninggal: 1, luka: 34, pengungsi: 1800 },
+                kerusakan: 'Kerusakan dinding rumah warga di Lembang, Cisarua, dan Parongpong.',
+                kerugian: 'Rp 190 Miliar',
+                lat: -6.820, lng: 107.610
+            }
+        ];
+
+        // INVENTARISASI GUNUNG BERAPI AKTIF KOMPREHENSIF PVMBG INDONESIA
+        const volcanoDatabaseList = [
+            {
+                name: 'Gunung Merapi',
+                provinsi: 'Jawa Tengah / DI Yogyakarta',
+                elevasi: '2.910 mdpl',
+                status: 'Level III (Siaga)',
+                statusColor: 'bg-amber-500 text-slate-950',
+                radiusBahaya: '3 - 7 Km dari Puncak',
+                erupsiTerakhir: '11 Maret 2023 (Awan Panas Guguran)',
+                populasiTerancam: '± 250.000 Jiwa (Sleman, Magelang, Boyolali, Klaten)',
+                deskripsi: 'Gunung api sangat aktif tipe strato dengan erupsi dominan kubah lava & awan panas guguran.',
+                lat: -7.5407, lng: 110.4457
+            },
+            {
+                name: 'Gunung Semeru',
+                provinsi: 'Jawa Timur',
+                elevasi: '3.676 mdpl',
+                status: 'Level III (Siaga)',
+                statusColor: 'bg-amber-500 text-slate-950',
+                radiusBahaya: '5 Km dari Puncak & 13 Km sepanjang Besuk Kobokan',
+                erupsiTerakhir: '4 Desember 2022 (Awan Panas & Erupsi Ash)',
+                populasiTerancam: '± 120.000 Jiwa (Lumajang & Malang)',
+                deskripsi: 'Puncak tertinggi Pulau Jawa dengan potensi bahaya awan panas guguran.',
+                lat: -8.108, lng: 112.922
+            },
+            {
+                name: 'Anak Krakatau',
+                provinsi: 'Lampung / Selat Sunda',
+                elevasi: '157 mdpl',
+                status: 'Level III (Siaga)',
+                statusColor: 'bg-amber-500 text-slate-950',
+                radiusBahaya: '5 Km dari Kawah Aktif',
+                erupsiTerakhir: '28 November 2023 (Semburan Abu VULKANIK 2.000m)',
+                populasiTerancam: 'Jalur Pelayaran Selat Sunda & Pesisir Banten/Lampung',
+                deskripsi: 'Gunung api kepulauan di Selat Sunda. Berpotensi memicu tsunami gelombang sekunder.',
+                lat: -6.102, lng: 105.423
+            },
+            {
+                name: 'Gunung Sinabung',
+                provinsi: 'Sumatera Utara',
+                elevasi: '2.460 mdpl',
+                status: 'Level II (Waspada)',
+                statusColor: 'bg-yellow-500 text-slate-950',
+                radiusBahaya: '3 Km dari Puncak',
+                erupsiTerakhir: 'Mei 2021 (Erupsi Ash & Lahar Hujan)',
+                populasiTerancam: '± 45.000 Jiwa (Kabupaten Karo)',
+                deskripsi: 'Gunung bertipe efusif-eksplosif di Dataran Tinggi Karo dengan periode letusan panjang.',
+                lat: 3.17, lng: 98.392
+            },
+            {
+                name: 'Gunung Ruang',
+                provinsi: 'Sulawesi Utara (Kep. Sitaro)',
+                elevasi: '725 mdpl',
+                status: 'Level IV (Awas)',
+                statusColor: 'bg-red-600 text-white animate-pulse',
+                radiusBahaya: '6 Km dari Pusat Kawah',
+                erupsiTerakhir: '17 April 2024 (Erupsi Eksplosif Masif & Tsunami Alert)',
+                populasiTerancam: '± 12.000 Jiwa (Pulau Ruang & Pulau Tagulandang)',
+                deskripsi: 'Gunung api kepulauan vulkanik eksplosif. Memicu evakuasi total 2 pulau.',
+                lat: 2.300, lng: 125.370
+            },
+            {
+                name: 'Gunung Lewotobi Laki-laki',
+                provinsi: 'Nusa Tenggara Timur (Flores Timur)',
+                elevasi: '1.584 mdpl',
+                status: 'Level IV (Awas)',
+                statusColor: 'bg-red-600 text-white animate-pulse',
+                radiusBahaya: '7 Km dari Kawah',
+                erupsiTerakhir: 'November 2024 - 2025 (Erupsi Piroklastik Masif)',
+                populasiTerancam: '± 16.000 Jiwa (Wulanggitang & Ile Bura)',
+                deskripsi: 'Gunung kembar aktif di Flores Timur. Sering memuntahkan lontaran bom vulkanik.',
+                lat: -8.538, lng: 122.775
+            },
+            {
+                name: 'Gunung Marapi',
+                provinsi: 'Sumatera Barat',
+                elevasi: '2.891 mdpl',
+                status: 'Level III (Siaga)',
+                statusColor: 'bg-amber-500 text-slate-950',
+                radiusBahaya: '4.5 Km dari Kawah Verbeek',
+                erupsiTerakhir: '3 Desember 2023 (Erupsi Freatik/Eksplosif Tiba-tiba)',
+                populasiTerancam: '± 80.000 Jiwa (Agam & Tanah Datar)',
+                deskripsi: 'Gunung api paling aktif di Pulau Sumatera. Erupsi acap kali terjadi tanpa preseden seismik jelas.',
+                lat: -0.381, lng: 100.473
+            },
+            {
+                name: 'Gunung Ibu',
+                provinsi: 'Maluku Utara (Halmahera Barat)',
+                elevasi: '1.325 mdpl',
+                status: 'Level IV (Awas)',
+                statusColor: 'bg-red-600 text-white animate-pulse',
+                radiusBahaya: '4 Km & Perluasan 7 Km Sektor Utara',
+                erupsiTerakhir: 'Mei 2024 - 2025 (Kolom Abu 5.000m & Kilat Vulkanik)',
+                populasiTerancam: '± 9.500 Jiwa (Kecamatan Ibu)',
+                deskripsi: 'Mengalami erupsi harian beruntun dengan lontaran kolom abu tebal dan kilat vulkanik.',
+                lat: 1.488, lng: 127.633
+            },
+            {
+                name: 'Gunung Bromo',
+                provinsi: 'Jawa Timur',
+                elevasi: '2.329 mdpl',
+                status: 'Level II (Waspada)',
+                statusColor: 'bg-yellow-500 text-slate-950',
+                radiusBahaya: '1 Km dari Kawah Aktif',
+                erupsiTerakhir: 'Februari 2019 (Erupsi Freatik/Ash)',
+                populasiTerancam: 'Kawasan Wisata Kawah Bromo & Suku Tengger',
+                deskripsi: 'Gunung api kawah terbuka di dalam Kaldera Tengger yang menjadi pusat destinasi wisata.',
+                lat: -7.942, lng: 112.953
+            },
+            {
+                name: 'Gunung Agung',
+                provinsi: 'Bali',
+                elevasi: '3.142 mdpl',
+                status: 'Level I (Normal)',
+                statusColor: 'bg-emerald-600 text-white',
+                radiusBahaya: '2 Km dari Kawah',
+                erupsiTerakhir: 'Juni 2019 (Erupsi Efusif Lava)',
+                populasiTerancam: '± 70.000 Jiwa (Karangasem Bali)',
+                deskripsi: 'Gunung api tertinggi di Bali yang memiliki catatan erupsi magmatis dahsyat pada tahun 1963.',
+                lat: -8.343, lng: 115.508
+            },
+            {
+                name: 'Gunung Soputan',
+                provinsi: 'Sulawesi Utara',
+                elevasi: '1.785 mdpl',
+                status: 'Level II (Waspada)',
+                statusColor: 'bg-yellow-500 text-slate-950',
+                radiusBahaya: '1.5 Km dari Puncak',
+                erupsiTerakhir: 'Desember 2018 (Erupsi Kolom Abu 7.500m)',
+                populasiTerancam: '± 30.000 Jiwa (Minahasa Tenggara)',
+                deskripsi: 'Gunung api strato bertipe eksplosif aktif di ujung utara Semenanjung Minahasa.',
+                lat: 1.108, lng: 124.730
+            },
+            {
+                name: 'Gunung Kerinci',
+                provinsi: 'Jambi / Sumatera Barat',
+                elevasi: '3.805 mdpl',
+                status: 'Level II (Waspada)',
+                statusColor: 'bg-yellow-500 text-slate-950',
+                radiusBahaya: '3 Km dari Kawah Aktif',
+                erupsiTerakhir: 'Januari 2023 (Erupsi Ash)',
+                populasiTerancam: '± 50.000 Jiwa (Kerinci & Solok Selatan)',
+                deskripsi: 'Gunung api strato tertinggi di Indonesia dan Asia Tenggara.',
+                lat: -1.697, lng: 101.264
+            }
+        ];
+
+        // INITIALIZATION
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            renderHistoryCards();
+            initCharts();
+            calculateAIRisk();
+            fetchLatestQuakeDataRealtime();
+
+            // Auto Refresh BMKG Data every 60 seconds
+            setInterval(fetchLatestQuakeDataRealtime, 60000);
+        });
+
+        // AUDIO ENGINE & SYNTHESIZER
+        function toggleAudioEngine() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            isAudioEnabled = !isAudioEnabled;
+            const btnText = document.getElementById('audio-status-text');
+            const icon = document.getElementById('audio-icon');
+
+            if (isAudioEnabled) {
+                btnText.innerText = "Suara: On";
+                icon.className = "fa-solid fa-volume-high text-cyan-400";
+                playBtnClickSound();
+            } else {
+                btnText.innerText = "Suara: Off";
+                icon.className = "fa-solid fa-volume-xmark text-slate-400";
+                stopEmergencySoundAndSpeech();
+            }
+        }
+
+        function playBtnClickSound() {
+            if (!isAudioEnabled || !audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.05);
+            } catch (e) { console.log(e); }
+        }
+
+        function playSeismicSimulateSound() {
+            if (!isAudioEnabled || !audioCtx) {
+                toggleAudioEngine();
+            }
+            try {
+                const bufferSize = audioCtx.sampleRate * 2;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                const whiteNoise = audioCtx.createBufferSource();
+                whiteNoise.buffer = buffer;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(120, audioCtx.currentTime);
+
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.5);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.0);
+
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                whiteNoise.start();
+                whiteNoise.stop(audioCtx.currentTime + 2.0);
+
+                document.getElementById('seismic-sound-badge').innerText = "Simulasi Suara Active";
+                document.getElementById('seismic-sound-badge').className = "text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-0.5 rounded font-mono font-bold animate-pulse";
+                setTimeout(() => {
+                    document.getElementById('seismic-sound-badge').innerText = "Pasif";
+                    document.getElementById('seismic-sound-badge').className = "text-[10px] bg-slate-800 px-2.5 py-0.5 rounded text-slate-400 font-mono";
+                }, 2000);
+            } catch(e) { console.log(e); }
+        }
+
+        // SINKRONISASI SUARA DENGAN SIKLUS ANIMASI GELOMBANG SEISMIK
+        function playSeismicCyclePulse() {
+            if (!isAudioEnabled || !audioCtx) return;
+            try {
+                const duration = 0.8;
+                const bufferSize = audioCtx.sampleRate * duration;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(90, audioCtx.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(35, audioCtx.currentTime + duration);
+
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                noise.start();
+                noise.stop(audioCtx.currentTime + duration);
+
+                document.getElementById('seismic-sound-badge').innerText = "Suara Animasi Aktif";
+                document.getElementById('seismic-sound-badge').className = "text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-2.5 py-0.5 rounded font-mono font-bold animate-pulse";
+            } catch(e) { console.log(e); }
+        }
+
+        // LEAFLET MAP INITIALIZATION
+        function initMap() {
+            map = L.map('map', {
+                center: [-2.548926, 118.014863], // Nusantara Center
+                zoom: 5,
+                zoomControl: true
+            });
+
+            activeTileLayer = L.tileLayer(basemapProviders['google-hybrid'], {
+                maxZoom: 18,
+                attribution: '&copy; Google Maps / BMKG / PVMBG'
+            }).addTo(map);
+
+            // Add Layer Groups to Map
+            quakeMarkersLayer.addTo(map);
+            faultLinesLayer.addTo(map);
+            tectonicPlatesLayer.addTo(map);
+            volcanoMarkersLayer.addTo(map);
+            userLocationLayer.addTo(map);
+
+            // Render Fault Lines & Tectonic Plates Data
+            renderStaticFaultLines();
+            renderTectonicPlates();
+            renderVolcanoMarkers();
+        }
+
+        // SWITCH BASEMAP
+        function setBasemap(providerKey) {
+            if (activeTileLayer) {
+                map.removeLayer(activeTileLayer);
+            }
+            activeTileLayer = L.tileLayer(basemapProviders[providerKey], {
+                maxZoom: 18,
+                attribution: '&copy; Map Provider'
+            }).addTo(map);
+
+            document.querySelectorAll('.bm-btn').forEach(btn => {
+                btn.classList.remove('bg-cyan-600', 'text-white', 'border-cyan-500');
+                btn.classList.add('bg-slate-950/80', 'text-slate-300', 'border-slate-800');
+            });
+
+            const activeBtn = document.getElementById(`bm-${providerKey}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('bg-slate-950/80', 'text-slate-300', 'border-slate-800');
+                activeBtn.classList.add('bg-cyan-600', 'text-white', 'border-cyan-500');
+            }
+        }
+
+        // TOGGLE MAP LAYERS
+        function toggleMapLayer(layerName) {
+            const isChecked = document.getElementById(`layer-${layerName}`).checked;
+            if (layerName === 'quakes') {
+                isChecked ? map.addLayer(quakeMarkersLayer) : map.removeLayer(quakeMarkersLayer);
+            } else if (layerName === 'faults') {
+                isChecked ? map.addLayer(faultLinesLayer) : map.removeLayer(faultLinesLayer);
+            } else if (layerName === 'plates') {
+                isChecked ? map.addLayer(tectonicPlatesLayer) : map.removeLayer(tectonicPlatesLayer);
+            } else if (layerName === 'volcanoes') {
+                isChecked ? map.addLayer(volcanoMarkersLayer) : map.removeLayer(volcanoMarkersLayer);
+            }
+        }
+
+        // REAL-TIME BMKG EARTHQUAKE FETCHING
+        async function fetchLatestQuakeDataRealtime() {
+            try {
+                // BMKG Official Real-time Autoquake JSON Endpoint
+                const response = await fetch('https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json');
+                const data = await response.json();
+                
+                if (data && data.Infogempa && data.Infogempa.gempa) {
+                    const gempa = data.Infogempa.gempa;
+                    latestQuakeData = gempa;
+                    
+                    const coordsStr = gempa.Coordinates.split(',');
+                    const lat = parseFloat(coordsStr[0]);
+                    const lng = parseFloat(coordsStr[1]);
+
+                    // Update Sidebar Highlight Info
+                    document.getElementById('quake-time').innerText = `${gempa.Jam} WIB (${gempa.Tanggal})`;
+                    document.getElementById('quake-mag').innerText = `M ${gempa.Magnitude}`;
+                    document.getElementById('quake-depth').innerText = `Kedalaman: ${gempa.Kedalaman}`;
+                    document.getElementById('quake-location').innerText = gempa.Wilayah;
+                    document.getElementById('quake-coords').innerText = `${gempa.Lintang}, ${gempa.Bujur}`;
+                    document.getElementById('quake-tsunami').innerText = gempa.Potensi;
+                    
+                    if (gempa.Potensi.toLowerCase().includes('tidak')) {
+                        document.getElementById('quake-tsunami').className = "font-bold text-emerald-400";
+                    } else {
+                        document.getElementById('quake-tsunami').className = "font-bold text-red-400 animate-pulse";
+                    }
+
+                    // Ticker Update
+                    document.getElementById('ticker-text').innerHTML = `
+                        <strong class="text-red-400 font-bold">INFO GEMPA REALTIME TERKINI:</strong> 
+                        M ${gempa.Magnitude} - ${gempa.Wilayah} | Kedalaman: ${gempa.Kedalaman} | Waktu: ${gempa.Jam} WIB | Potensi: ${gempa.Potensi}
+                    `;
+
+                    // Check for new incoming earthquake alert notification
+                    if (lastReportedJam && lastReportedJam !== gempa.Jam) {
+                        triggerSimulatedLiveAlert(gempa);
+                    }
+                    lastReportedJam = gempa.Jam;
+
+                    // Plot Quake Marker & Waves
+                    plotLatestQuakeMarker(lat, lng, gempa);
+                    startSeismicWaveAnimation(lat, lng, parseFloat(gempa.Magnitude));
+
+                    // Recalculate User Metrics if location active
+                    if (userCoords) {
+                        calculateUserDistanceAndMMI(lat, lng, parseFloat(gempa.Magnitude));
+                    }
+                }
+            } catch (err) {
+                console.error("Gagal mengambil data BMKG realtime:", err);
+            }
+        }
+
+        // PLOT LATEST QUAKE MARKER ON MAP
+        function plotLatestQuakeMarker(lat, lng, gempa) {
+            quakeMarkersLayer.clearLayers();
+
+            const magNum = parseFloat(gempa.Magnitude);
+            const markerColor = magNum >= 6.0 ? '#ef4444' : '#f59e0b';
+
+            // Pulsing Marker Icon
+            const customIcon = L.divIcon({
+                className: 'custom-quake-icon',
+                html: `
+                    <div class="relative flex items-center justify-center w-8 h-8">
+                        <div class="absolute w-full h-full rounded-full animate-ping opacity-75" style="background-color: ${markerColor}"></div>
+                        <div class="w-6 h-6 rounded-full border-2 border-white shadow-xl flex items-center justify-center font-black text-[10px] text-white" style="background-color: ${markerColor}">
+                            ${magNum}
+                        </div>
+                    </div>
+                `,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+
+            const popupContent = `
+                <div class="p-2 space-y-2 text-slate-100 max-w-xs">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-1.5">
+                        <span class="text-[10px] font-black uppercase text-red-400 bg-red-950 px-2 py-0.5 rounded border border-red-800">
+                            GEMPA TERKINI REALTIME
+                        </span>
+                        <span class="text-[11px] font-mono text-slate-400">${gempa.Jam} WIB</span>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-black text-red-500 font-mono">M ${gempa.Magnitude}</span>
+                        <span class="text-xs text-amber-400 font-bold">Kedalaman: ${gempa.Kedalaman}</span>
+                    </div>
+                    <p class="text-xs font-bold text-slate-200 leading-tight">${gempa.Wilayah}</p>
+                    <div class="bg-slate-900 p-2 rounded-lg text-[11px] space-y-1 font-mono border border-slate-800">
+                        <div><span class="text-slate-400">Koordinat:</span> ${gempa.Lintang}, ${gempa.Bujur}</div>
+                        <div><span class="text-slate-400">Dirasakan:</span> ${gempa.Dirasakan || 'Parameter Pengukuran BMKG'}</div>
+                        <div><span class="text-slate-400">Potensi:</span> <strong class="${gempa.Potensi.includes('tidak') ? 'text-emerald-400' : 'text-red-400'}">${gempa.Potensi}</strong></div>
+                    </div>
+                    ${gempa.Shakemap ? `<img src="https://data.bmkg.go.id/DataMKG/TEWS/${gempa.Shakemap}" class="w-full h-28 object-cover rounded-lg border border-slate-700 mt-1" alt="Shakemap BMKG"/>` : ''}
+                </div>
+            `;
+
+            const marker = L.marker([lat, lng], { icon: customIcon }).bindPopup(popupContent);
+            quakeMarkersLayer.addLayer(marker);
+        }
+
+        // FOCUS MAP ON LATEST EPICENTER
+        function centerMapOnLatestQuake() {
+            if (latestQuakeData) {
+                const coordsStr = latestQuakeData.Coordinates.split(',');
+                const lat = parseFloat(coordsStr[0]);
+                const lng = parseFloat(coordsStr[1]);
+                map.flyTo([lat, lng], 8, { duration: 1.5 });
+            }
+        }
+
+        // SMOOTH SEISMIC WAVE ANIMATION LOOP (P-Wave & S-Wave) + SOUND SYNC
+        function startSeismicWaveAnimation(lat, lng, mag) {
+            currentWaveData = {
+                lat: lat,
+                lng: lng,
+                maxP: mag * 80000,
+                maxS: mag * 48000
+            };
+
+            if (seismicWaveCircleP) map.removeLayer(seismicWaveCircleP);
+            if (seismicWaveCircleP_outer) map.removeLayer(seismicWaveCircleP_outer);
+            if (seismicWaveCircleS) map.removeLayer(seismicWaveCircleS);
+
+            seismicWaveCircleP = L.circle([lat, lng], {
+                radius: 1000,
+                color: '#38bdf8',
+                weight: 2,
+                opacity: 0.8,
+                fillColor: '#38bdf8',
+                fillOpacity: 0.1,
+                interactive: false
+            }).addTo(map);
+
+            seismicWaveCircleS = L.circle([lat, lng], {
+                radius: 500,
+                color: '#ef4444',
+                weight: 2.5,
+                opacity: 0.9,
+                fillColor: '#ef4444',
+                fillOpacity: 0.2,
+                interactive: false
+            }).addTo(map);
+
+            animProgress = 0;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animateWaves();
+        }
+
+        function animateWaves() {
+            if (!isWaveAnimating) return;
+
+            animProgress += 0.008;
+            if (animProgress > 1) {
+                animProgress = 0;
+            }
+
+            // Memicu suara seismik pada awal siklus animasi gelombang
+            if (animProgress < 0.015 && (Date.now() - lastWaveAudioTrigger > 800)) {
+                lastWaveAudioTrigger = Date.now();
+                if (isAudioEnabled) {
+                    playSeismicCyclePulse();
+                }
+            }
+
+            const radiusP = currentWaveData.maxP * animProgress;
+            const radiusS = currentWaveData.maxS * animProgress;
+
+            const opacityP = (1 - animProgress) * 0.7;
+            const opacityS = (1 - animProgress) * 0.85;
+
+            if (seismicWaveCircleP) {
+                seismicWaveCircleP.setRadius(radiusP);
+                seismicWaveCircleP.setStyle({ opacity: opacityP, fillOpacity: opacityP * 0.25 });
+            }
+
+            if (seismicWaveCircleS) {
+                seismicWaveCircleS.setRadius(radiusS);
+                seismicWaveCircleS.setStyle({ opacity: opacityS, fillOpacity: opacityS * 0.35 });
+            }
+
+            animationFrameId = requestAnimationFrame(animateWaves);
+        }
+
+        function toggleWaveAnimation() {
+            isWaveAnimating = !isWaveAnimating;
+            const btnText = document.getElementById('anim-btn-text');
+            const btnIcon = document.getElementById('anim-btn-icon');
+            const badge = document.getElementById('anim-status-badge');
+
+            if (isWaveAnimating) {
+                btnText.innerText = "Hentikan Animasi";
+                btnIcon.className = "fa-solid fa-pause";
+                badge.innerText = "Aktif";
+                badge.className = "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-mono font-bold";
+                animateWaves();
+            } else {
+                btnText.innerText = "Jalankan Animasi";
+                btnIcon.className = "fa-solid fa-play";
+                badge.innerText = "Dihentikan";
+                badge.className = "text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded font-mono font-bold";
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            }
+        }
+
+        // STATIC FAULT LINES DATA & RENDER
+        function renderStaticFaultLines() {
+            faultLinesLayer.clearLayers();
+
+            const faultData = [
+                {
+                    name: 'Zona Megathrust Sunda (Sumatera - Jawa - Bali)',
+                    coords: [[5.5, 93.0], [2.0, 95.0], [-2.0, 98.0], [-6.0, 103.0], [-9.0, 108.0], [-10.5, 115.0], [-11.0, 120.0]]
+                },
+                {
+                    name: 'Sesar Besar Sumatera (Great Sumatran Fault)',
+                    coords: [[5.8, 95.3], [3.5, 98.2], [0.5, 100.1], [-2.5, 102.1], [-5.0, 104.5]]
+                },
+                {
+                    name: 'Sesar Lembang (Jawa Barat)',
+                    coords: [[-6.80, 107.52], [-6.82, 107.61], [-6.84, 107.72]]
+                },
+                {
+                    name: 'Sesar Cimandiri (Jawa Barat)',
+                    coords: [[-7.00, 106.50], [-6.90, 106.90], [-6.80, 107.20]]
+                },
+                {
+                    name: 'Sesar Opak (Yogyakarta)',
+                    coords: [[-8.00, 110.30], [-7.85, 110.45], [-7.75, 110.55]]
+                },
+                {
+                    name: 'Sesar Palu-Koro (Sulawesi Tengah)',
+                    coords: [[1.0, 120.0], [-0.8, 119.8], [-2.5, 120.5], [-4.0, 121.5]]
+                }
+            ];
+
+            faultData.forEach(fault => {
+                const polyline = L.polyline(fault.coords, {
+                    color: '#ef4444',
+                    weight: 2.5,
+                    dashArray: '6, 6',
+                    opacity: 0.85
+                }).bindPopup(`<div class="p-1 text-xs font-bold text-red-400"><i class="fa-solid fa-route"></i> ${fault.name}</div>`);
+                faultLinesLayer.addLayer(polyline);
+            });
+        }
+
+        // TECTONIC PLATES DATA & RENDER
+        function renderTectonicPlates() {
+            tectonicPlatesLayer.clearLayers();
+
+            const plateBoundaries = [
+                // Batas Lempeng Indo-Australia vs Sunda
+                [[-10.0, 90.0], [-11.5, 105.0], [-12.0, 118.0], [-11.0, 130.0]],
+                // Lempeng Pasifik & Filipina
+                [[5.0, 126.0], [3.0, 128.0], [0.0, 132.0], [-2.0, 140.0]]
+            ];
+
+            plateBoundaries.forEach(pCoords => {
+                const polyline = L.polyline(pCoords, {
+                    color: '#a855f7',
+                    weight: 3,
+                    opacity: 0.7
+                }).bindPopup(`<div class="p-1 text-xs font-bold text-purple-300"><i class="fa-solid fa-draw-polygon"></i> Batas Lempeng Tektonik Utama</div>`);
+                tectonicPlatesLayer.addLayer(polyline);
+            });
+        }
+
+        // VOLCANO MARKERS RENDER
+        function renderVolcanoMarkers() {
+            volcanoMarkersLayer.clearLayers();
+
+            volcanoDatabaseList.forEach(v => {
+                const vIcon = L.divIcon({
+                    className: 'custom-volcano-icon',
+                    html: `
+                        <div class="relative flex items-center justify-center w-6 h-6">
+                            <div class="w-5 h-5 rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center text-amber-400 font-bold text-[10px] shadow-lg">
+                                <i class="fa-solid fa-volcano"></i>
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+
+                const popupHtml = `
+                    <div class="p-2 space-y-2 text-slate-100 max-w-xs">
+                        <div class="flex items-center justify-between border-b border-slate-700 pb-1">
+                            <h4 class="font-bold text-sm text-amber-400 flex items-center gap-1.5"><i class="fa-solid fa-volcano"></i> ${v.name}</h4>
+                            <span class="text-[9px] px-2 py-0.5 rounded font-bold ${v.statusColor}">${v.status}</span>
+                        </div>
+                        <p class="text-xs text-slate-300">${v.deskripsi}</p>
+                        <div class="text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800 space-y-1 font-mono">
+                            <div><span class="text-slate-400">Provinsi:</span> ${v.provinsi}</div>
+                            <div><span class="text-slate-400">Elevasi:</span> ${v.elevasi}</div>
+                            <div><span class="text-slate-400">Bahaya:</span> <span class="text-amber-400">${v.radiusBahaya}</span></div>
+                            <div><span class="text-slate-400">Terakhir Erupsi:</span> ${v.erupsiTerakhir}</div>
+                        </div>
+                    </div>
+                `;
+
+                const marker = L.marker([v.lat, v.lng], { icon: vIcon }).bindPopup(popupHtml);
+                volcanoMarkersLayer.addLayer(marker);
+            });
+        }
+
+        // GEOLOCATION & USER DISTANCE ANALYSIS
+        function getUserLocation() {
+            const statusLabel = document.getElementById('user-geo-status');
+            statusLabel.innerText = "Mendeteksi...";
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userCoords = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        statusLabel.innerText = "Terdeteksi";
+                        statusLabel.className = "text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-mono font-bold";
+
+                        // Render User Marker & Radius
+                        renderUserLocationOnMap();
+
+                        // Compute Distance if Latest Quake exists
+                        if (latestQuakeData) {
+                            const c = latestQuakeData.Coordinates.split(',');
+                            calculateUserDistanceAndMMI(parseFloat(c[0]), parseFloat(c[1]), parseFloat(latestQuakeData.Magnitude));
+                        }
+                    },
+                    (err) => {
+                        statusLabel.innerText = "Gagal Akses GPS";
+                        alert("Gagal mendeteksi lokasi GPS Anda. Memakai perkiraan pusat Jakarta.");
+                        userCoords = { lat: -6.2088, lng: 106.8456 }; // Default Jakarta
+                        renderUserLocationOnMap();
+                    }
+                );
+            } else {
+                alert("Browser tidak mendukung geolokasi.");
+            }
+        }
+
+        function renderUserLocationOnMap() {
+            if (!userCoords) return;
+            userLocationLayer.clearLayers();
+
+            const userIcon = L.divIcon({
+                className: 'user-location-marker',
+                html: `<div class="w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow-lg"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+
+            userLocationMarker = L.marker([userCoords.lat, userCoords.lng], { icon: userIcon }).bindPopup(`
+                <div class="p-1 text-xs font-bold text-sky-400">
+                    <i class="fa-solid fa-location-crosshairs"></i> Lokasi Anda Dideteksi
+                </div>
+            `);
+
+            userLocationLayer.addLayer(userLocationMarker);
+
+            if (filterRadiusKm > 0) {
+                userRadiusCircle = L.circle([userCoords.lat, userCoords.lng], {
+                    radius: filterRadiusKm * 1000,
+                    color: '#0284c7',
+                    weight: 1.5,
+                    dashArray: '4, 4',
+                    fillColor: '#0284c7',
+                    fillOpacity: 0.05
+                });
+                userLocationLayer.addLayer(userRadiusCircle);
+            }
+
+            map.flyTo([userCoords.lat, userCoords.lng], 7, { duration: 1.2 });
+            document.getElementById('user-metrics-card').classList.remove('hidden');
+        }
+
+        function updateRadiusFilter() {
+            const val = parseInt(document.getElementById('radius-filter-select').value);
+            filterRadiusKm = val;
+            document.getElementById('radius-val-label').innerText = val > 0 ? `${val} Km` : "Semua";
+            if (userCoords) {
+                renderUserLocationOnMap();
+            }
+        }
+
+        function calculateUserDistanceAndMMI(qLat, qLng, mag) {
+            if (!userCoords) return;
+
+            const distKm = getHaversineDistance(userCoords.lat, userCoords.lng, qLat, qLng);
+            document.getElementById('user-dist-val').innerText = `${distKm.toFixed(1)} Km`;
+
+            // Estimasi Waktu Tiba Gelombang S (V = ~3.5 km/s)
+            const etaSeconds = Math.max(1, Math.round(distKm / 3.5));
+            document.getElementById('user-swave-val').innerText = `~${etaSeconds} Detik`;
+
+            // Estimasi MMI
+            let estimatedMMI = "MMI I - II";
+            if (distKm < 50) estimatedMMI = mag >= 6.5 ? "MMI VII - VIII" : "MMI V - VI";
+            else if (distKm < 150) estimatedMMI = mag >= 6.5 ? "MMI V - VI" : "MMI III - IV";
+            else if (distKm < 300) estimatedMMI = "MMI III - IV";
+            else estimatedMMI = "MMI I - II (Tidak Dirasakan)";
+
+            document.getElementById('user-mmi-val').innerText = estimatedMMI;
+        }
+
+        // HAVERSINE DISTANCE FORMULA
+        function getHaversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radius Bumi Km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // NAVIGATION TABS SWITCHER
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-cyan-600', 'text-white', 'shadow-lg', 'shadow-cyan-600/30');
+                btn.classList.add('text-slate-400');
+            });
+
+            const activeNavBtn = document.getElementById(`nav-${tabId}`);
+            if (activeNavBtn) {
+                activeNavBtn.classList.remove('text-slate-400');
+                activeNavBtn.classList.add('bg-cyan-600', 'text-white', 'shadow-lg', 'shadow-cyan-600/30');
+            }
+
+            if (tabId === 'map-tab' && map) {
+                setTimeout(() => map.invalidateSize(), 200);
+            }
+        }
+
+        // HISTORI CARDS RENDER & FILTERS
+        function renderHistoryCards(filteredData = null) {
+            const container = document.getElementById('history-cards-container');
+            container.innerHTML = '';
+
+            const list = filteredData || historyEarthquakeData;
+
+            list.forEach(item => {
+                const isTsunami = item.tsunamiStatus.toLowerCase().includes('awas') || item.tsunamiStatus.toLowerCase().includes('siaga') || item.tsunamiStatus.toLowerCase().includes('waspada');
+                
+                const card = document.createElement('div');
+                card.className = "glass-card rounded-2xl p-5 border border-slate-800 hover:border-cyan-500/50 transition-all flex flex-col justify-between interactive-card group";
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-[11px] font-mono font-bold text-slate-400 flex items-center gap-1.5">
+                                <i class="fa-regular fa-calendar-check text-cyan-400"></i> ${item.tanggal}
+                            </span>
+                            <span class="text-[10px] font-black px-2.5 py-0.5 rounded-full ${isTsunami ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-slate-800 text-slate-400'}">
+                                ${isTsunami ? 'POTENSI TSUNAMI' : 'GEMPA BUMI'}
+                            </span>
+                        </div>
+
+                        <div class="flex items-baseline gap-2 mb-2">
+                            <span class="text-2xl font-black text-red-500 font-mono">M ${item.magnitude}</span>
+                            <span class="text-xs font-bold text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/20">${item.kedalaman}</span>
+                        </div>
+
+                        <h3 class="text-sm font-bold text-white mb-2 group-hover:text-cyan-300 transition-colors">${item.lokasi}</h3>
+                        
+                        <div class="space-y-1.5 text-xs text-slate-300 border-t border-slate-800/80 pt-3 mb-4">
+                            <div class="flex justify-between"><span class="text-slate-500">Skala MMI:</span> <span class="font-semibold text-cyan-300">${item.mmi}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Tsunami:</span> <span class="font-bold ${isTsunami ? 'text-sky-400' : 'text-slate-400'}">${item.tsunamiHeight}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Korban Jiwa:</span> <span class="font-mono font-bold text-red-400">${item.korban.meninggal.toLocaleString()} Jiwa</span></div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 border-t border-slate-800 pt-3">
+                        <button onclick="openHistoryDetailModal(${item.id}); playBtnClickSound();" class="btn-ripple flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2 rounded-xl transition-all border border-slate-700 flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-circle-info"></i> Rincian Dampak
+                        </button>
+                        <button onclick="replayHistoryOnMap(${item.lat}, ${item.lng}, ${item.magnitude}); playBtnClickSound();" class="btn-ripple bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-md">
+                            <i class="fa-solid fa-earth-asia"></i> Peta
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterHistoryTable() {
+            const query = document.getElementById('history-search-input').value.toLowerCase();
+            const filterVal = document.getElementById('history-filter-select').value;
+
+            const filtered = historyEarthquakeData.filter(item => {
+                const matchesSearch = item.lokasi.toLowerCase().includes(query) || item.tanggal.toLowerCase().includes(query);
+                
+                let matchesSelect = true;
+                if (filterVal === 'tsunami') {
+                    matchesSelect = !item.tsunamiStatus.toLowerCase().includes('tidak');
+                } else if (filterVal === 'major') {
+                    matchesSelect = parseFloat(item.magnitude) >= 7.0;
+                }
+
+                return matchesSearch && matchesSelect;
+            });
+
+            renderHistoryCards(filtered);
+        }
+
+        function openHistoryDetailModal(id) {
+            const item = historyEarthquakeData.find(x => x.id === id);
+            if (!item) return;
+
+            document.getElementById('detail-modal-title').innerText = `${item.lokasi} (${item.tanggal})`;
+            document.getElementById('detail-modal-mag').innerText = `M ${item.magnitude}`;
+            document.getElementById('detail-modal-depth').innerText = item.kedalaman;
+            document.getElementById('detail-modal-mmi').innerText = item.mmi;
+            document.getElementById('detail-modal-tsunami').innerText = item.tsunamiHeight;
+            
+            document.getElementById('detail-modal-dead').innerText = item.korban.meninggal.toLocaleString();
+            document.getElementById('detail-modal-injured').innerText = item.korban.luka.toLocaleString();
+            document.getElementById('detail-modal-displaced').innerText = item.korban.pengungsi.toLocaleString();
+
+            document.getElementById('detail-modal-damage').innerText = item.kerusakan;
+            document.getElementById('detail-modal-loss').innerText = item.kerugian;
+
+            document.getElementById('detail-modal-replay-btn').onclick = () => {
+                closeHistoryDetailModal();
+                replayHistoryOnMap(item.lat, item.lng, parseFloat(item.magnitude));
+            };
+
+            document.getElementById('history-detail-modal').classList.remove('hidden');
+        }
+
+        function closeHistoryDetailModal() {
+            document.getElementById('history-detail-modal').classList.add('hidden');
+        }
+
+        function replayHistoryOnMap(lat, lng, mag) {
+            switchTab('map-tab');
+            map.flyTo([lat, lng], 7, { duration: 1.5 });
+            startSeismicWaveAnimation(lat, lng, mag);
+        }
+
+        // KALKULATOR AI RISK ENGINE
+        function calculateAIRisk() {
+            const mag = parseFloat(document.getElementById('ai-mag-input').value);
+            const depth = parseFloat(document.getElementById('ai-depth-input').value);
+            const dist = parseFloat(document.getElementById('ai-dist-input').value);
+            const soil = document.getElementById('ai-soil-select').value;
+
+            document.getElementById('ai-mag-val').innerText = `${mag.toFixed(1)} M`;
+            document.getElementById('ai-depth-val').innerText = `${depth} Km`;
+            document.getElementById('ai-dist-val').innerText = `${dist} Km`;
+
+            // Hitung ETA S-Wave
+            const swaveEta = (dist / 3.5).toFixed(1);
+            document.getElementById('res-swave-eta').innerText = `~${swaveEta} Detik`;
+
+            // Soil Factor Amplification
+            let soilFactor = 1.0;
+            if (soil === 'sediment') soilFactor = 1.35;
+            if (soil === 'hardrock') soilFactor = 0.75;
+
+            // Estimasi Intensitas MMI
+            const rawMMI = (1.5 * mag) - (1.2 * Math.log10(dist + 10)) - (0.005 * depth) + (soilFactor * 1.2);
+            
+            let mmiLabel = "MMI IV";
+            let mmiDesc = "Guncangan ringan, dirasakan oleh orang di dalam rumah.";
+
+            if (rawMMI >= 8) {
+                mmiLabel = "MMI VIII - IX (Sangat Rusak)";
+                mmiDesc = "Kerusakan berat pada bangunan. Cerobong asap dan dinding struktur retak runtuh.";
+            } else if (rawMMI >= 6.5) {
+                mmiLabel = "MMI VI - VII (Kuat)";
+                mmiDesc = "Dirasakan oleh semua orang. Barang terpental, plaster dinding retak halus.";
+            } else if (rawMMI >= 5) {
+                mmiLabel = "MMI V (Sedang)";
+                mmiDesc = "Dirasakan di luar rumah. Barang-barang tergantung bergoyang keras.";
+            }
+            document.getElementById('res-mmi').innerText = mmiLabel;
+            document.getElementById('res-mmi-desc').innerText = mmiDesc;
+
+            // Status Kesiapsiagaan
+            const readinessBadge = document.getElementById('readiness-badge');
+            const readinessTitle = document.getElementById('readiness-title');
+            const readinessDesc = document.getElementById('readiness-desc');
+
+            if (rawMMI >= 7.0 || (mag >= 7.0 && depth < 30)) {
+                readinessBadge.innerText = "Merah (Tinggi / Evakuasi)";
+                readinessBadge.className = "px-3 py-1 text-xs font-black rounded-full uppercase bg-red-950 text-red-400 border border-red-800 animate-pulse";
+                readinessTitle.innerText = "POTENSI BAHAYA TINGGI - SEGERA BERSIAP EVAKUASI";
+                readinessDesc.innerText = "Tingkat risiko kerusakan fisik sangat tinggi. Matikan sumber gas/listrik, ambil Tas Siaga Bencana (TSB), dan gunakan jalur evakuasi menuju area terbuka.";
+            } else if (rawMMI >= 5.5) {
+                readinessBadge.innerText = "Kuning (Waspada)";
+                readinessBadge.className = "px-3 py-1 text-xs font-black rounded-full uppercase bg-amber-950 text-amber-400 border border-amber-800";
+                readinessTitle.innerText = "STATUS WASPADA - LINDUNGI KEPALA";
+                readinessDesc.innerText = "Guncangan terasa nyata. Lakukan prosedur Drop, Cover, Hold On di bawah meja yang kokoh. Hindari berada di dekat jendela kaca.";
+            } else {
+                readinessBadge.innerText = "Hijau (Aman / Normal)";
+                readinessBadge.className = "px-3 py-1 text-xs font-black rounded-full uppercase bg-emerald-950 text-emerald-400 border border-emerald-800";
+                readinessTitle.innerText = "Status Normal / Kesiapsiagaan Rutin";
+                readinessDesc.innerText = "Potensi kerusakan fisik rendah. Pertahankan kewaspadaan standar dan pastikan jalur evakuasi bebas dari rintangan.";
+            }
+
+            // Probability Tsunami Calculation
+            let tsunamiProb = Math.min(98, Math.max(2, Math.round((mag * 12) - (depth * 0.25) + (dist < 30 ? 15 : 0))));
+            if (mag < 6.5 || depth > 70) tsunamiProb = Math.min(15, tsunamiProb);
+
+            document.getElementById('tsunami-status-label').innerText = `Probabilitas: ${tsunamiProb}%`;
+
+            updateTsunamiChart(tsunamiProb);
+        }
+
+        // CHARTS INITIALIZATION & UPDATES
+        function initCharts() {
+            // Tsunami Probability Chart
+            const ctx1 = document.getElementById('tsunamiProbabilityChart').getContext('2d');
+            tsunamiChartInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: ['Potensi Tsunami Lokal', 'Potensi Gelombang Pasang', 'Kondisi Aman'],
+                    datasets: [{
+                        label: 'Probabilitas %',
+                        data: [20, 35, 45],
+                        backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                    }
+                }
+            });
+
+            // Disaster Trend Analytics Chart
+            const ctx2 = document.getElementById('disasterTrendChart').getContext('2d');
+            trendChartInstance = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: ['2004', '2008', '2012', '2016', '2020', '2024', '2026'],
+                    datasets: [{
+                        label: 'Frekuensi Gempa M ≥ 5.0',
+                        data: [12, 19, 15, 24, 22, 29, 31],
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                    }
+                }
+            });
+        }
+
+        function updateTsunamiChart(prob) {
+            if (!tsunamiChartInstance) return;
+            const safe = 100 - prob;
+            const surge = Math.round(prob * 0.4);
+            tsunamiChartInstance.data.datasets[0].data = [prob, surge, Math.max(0, safe)];
+            tsunamiChartInstance.update();
+        }
+
+        // EMERGENCY ALERT MODAL CONTROLS
+        function triggerSimulatedLiveAlert(customGempa = null) {
+            const modal = document.getElementById('call-broadcast-modal');
+            modal.classList.remove('hidden');
+
+            if (customGempa) {
+                document.getElementById('modal-alert-title').innerText = `PERINGATAN BMKG: M ${customGempa.Magnitude}`;
+                document.getElementById('modal-alert-desc').innerText = `Guncangan gempa bumi terdeteksi di ${customGempa.Wilayah} (${customGempa.Jam} WIB). Kedalaman ${customGempa.Kedalaman}. ${customGempa.Potensi}`;
+            }
+
+            if (isAudioEnabled) {
+                playEmergencySirenSound();
+            }
+        }
+
+        function closeEmergencyModal() {
+            document.getElementById('call-broadcast-modal').classList.add('hidden');
+            stopEmergencySoundAndSpeech();
+        }
+
+        function playEmergencySirenSound() {
+            if (!audioCtx) return;
+            try {
+                // High pitch emergency beep pulse
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(440, audioCtx.currentTime + 0.5);
+                
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            } catch(e) { console.log(e); }
+        }
+
+        function stopEmergencySoundAndSpeech() {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+            document.getElementById('modal-voice-status').innerText = "Suara dinonaktifkan.";
+        }
+    </script>
+</body>
+</html>
